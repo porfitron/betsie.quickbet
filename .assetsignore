@@ -1,0 +1,16 @@
+# Not served as HTTP — keep uploads small and avoid leaking source/config
+.git/
+.github/
+.cursor/
+src/
+functions/
+MD/
+
+.gitignore
+wrangler.toml
+wrangler.jsonc
+.dev.vars
+.dev.vars.example
+.env
+.env.*
+.DS_Store

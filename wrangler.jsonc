@@ -1,14 +1,20 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "quickbet",
+  "main": "src/worker.js",
   "compatibility_date": "2026-05-01",
   "observability": {
     "enabled": true
   },
   "assets": {
-    "directory": "."
+    "directory": ".",
+    "binding": "ASSETS"
   },
   "compatibility_flags": [
     "nodejs_compat"
   ]
+  // After: npx wrangler d1 create quickbet (or your DB name)
+  // "d1_databases": [
+  //   { "binding": "DB", "database_name": "quickbet", "database_id": "PASTE_UUID" }
+  // ],
 }
