@@ -948,6 +948,18 @@
             background: #111827;
         }
 
+        .early-call-notify-gif {
+            display: block;
+            width: calc(100% + 32px);
+            max-width: none;
+            margin: -18px -16px 12px;
+            max-height: 160px;
+            object-fit: cover;
+            object-position: center top;
+            border-radius: 15px 15px 0 0;
+            background: #000;
+        }
+
         .landing-preview-card {
             width: min(100%, 620px);
             max-height: min(86vh, 920px);
@@ -1391,6 +1403,13 @@
     </div>
     <div id="early-call-notify-modal" class="modal-overlay is-hidden" role="dialog" aria-modal="true" aria-labelledby="early-call-notify-title">
         <div class="modal-card">
+            <img
+                class="early-call-notify-gif"
+                src="https://media3.giphy.com/media/v1.Y2lkPTc5MGI3NjExbm80ZnYyM3Q3dTByZHFoc3dmeWJ0ZmYxeTBjbXNtcTNtN2N0NGNiYyZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9Zw/11OQRFijlncwq4/giphy.gif"
+                alt="Celebratory fist pump animation"
+                width="380"
+                height="160"
+                decoding="async">
             <h2 id="early-call-notify-title" class="modal-title">The bet was called early</h2>
             <p class="modal-text">The countdown stopped. You can vote on the outcome now.</p>
             <div class="modal-actions">
@@ -2339,10 +2358,19 @@
             if (remaining <= 0) {
                 return "Pick Your Winner";
             }
+            const pad2 = (n) => String(n).padStart(2, "0");
+            const fortyEightHoursMs = 48 * 3600000;
+            if (remaining > fortyEightHoursMs) {
+                const days = Math.floor(remaining / 86400000);
+                const hours = Math.floor((remaining % 86400000) / 3600000);
+                const minutes = Math.floor((remaining % 3600000) / 60000);
+                const seconds = Math.floor((remaining % 60000) / 1000);
+                return `${days}d ${pad2(hours)}h ${pad2(minutes)}m ${pad2(seconds)}s`;
+            }
             const hours = Math.floor(remaining / 3600000);
             const minutes = Math.floor((remaining % 3600000) / 60000);
             const seconds = Math.floor((remaining % 60000) / 1000);
-            return `${String(hours).padStart(2, "0")}h ${String(minutes).padStart(2, "0")}m ${String(seconds).padStart(2, "0")}s`;
+            return `${pad2(hours)}h ${pad2(minutes)}m ${pad2(seconds)}s`;
         }
 
         function toIcsTime(date) {
