@@ -1,4 +1,4 @@
-const CACHE_NAME = "betsie-lite-v2";
+const CACHE_NAME = "betsie-lite-v3";
 const PRECACHE_URLS = [
   "/",
   "/index.html",
@@ -55,6 +55,12 @@ self.addEventListener("fetch", (event) => {
           return cachedIndex || caches.match("/");
         })
     );
+    return;
+  }
+
+  // Never cache API reads — polling and hydration must see live bet state (SW cache-first would serve stale JSON).
+  if (isSameOrigin && requestUrl.pathname.startsWith("/api/")) {
+    event.respondWith(fetch(event.request));
     return;
   }
 
