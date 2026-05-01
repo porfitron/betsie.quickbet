@@ -2619,12 +2619,15 @@
             const challengerVoteLabel = samePosition ? "Both Wrong!" : `${escapedChallengerName} Won!`;
             const showCreatorWaitingForConfirmation =
                 isCreatorView && flowStep === "invite" && !hasChallengerSentConfirmation;
+            // Same live-bet chrome as after /share/confirm-agree/ → / (calendar, next step, re-share): challenger had accepted + confirmation sent, on either track.
+            const postConfirmLiveUi =
+                hasChallengerAccepted && hasChallengerSentConfirmation && (acceptedFromChallenger || isCreatorView);
             app.innerHTML = `
                 ${isCreatorView ? renderCreatorBreadcrumb(creatorBreadcrumbStep, true) : renderChallengerBreadcrumb(challengerFlowStep)}
                 <h1>${escapedTitle || "Your Bet"}</h1>
                 <div class="countdown" id="countdown">--</div>
                 <p class="subtitle bet-timing-line" style="text-align: center; margin-top: 0; margin-bottom: 2px;">${betTimingLabel}</p>
-                ${acceptedFromChallenger && hasChallengerAccepted && hasChallengerSentConfirmation && !votingPeriod ? `<p class="subtitle" style="text-align: center; margin-top: 4px; margin-bottom: 10px; line-height: 1;"><button id="add-calendar-pill" class="pill add-calendar-pill" type="button">${calendarActionLabel("Add to calendar")}</button></p>` : ""}
+                ${postConfirmLiveUi && !votingPeriod ? `<p class="subtitle" style="text-align: center; margin-top: 4px; margin-bottom: 10px; line-height: 1;"><button id="add-calendar-pill" class="pill add-calendar-pill" type="button">${calendarActionLabel("Add to calendar")}</button></p>` : ""}
                 <section class="matchup" aria-label="Head to head positions">
                     <article class="competitor">
                         <div class="avatar creator" aria-hidden="true">${creatorAvatar}</div>
@@ -2643,10 +2646,10 @@
                     <button id="creator-won" class="winner-btn${samePosition ? " both-right" : ""}" type="button">${creatorVoteLabel}</button>
                     <button id="challenger-won" class="winner-btn" type="button">${challengerVoteLabel}</button>
                 </div>
-                ${acceptedFromChallenger && hasChallengerSentConfirmation && votingPeriod && !samePosition ? '<p class="subtitle" style="text-align: center;">If no one was right, <button id="no-contest-link" type="button" style="border: 0; background: transparent; color: inherit; text-decoration: underline; padding: 0; font: inherit; cursor: pointer;">click here</button>.</p>' : ""}
+                ${postConfirmLiveUi && votingPeriod && !samePosition ? '<p class="subtitle" style="text-align: center;">If no one was right, <button id="no-contest-link" type="button" style="border: 0; background: transparent; color: inherit; text-decoration: underline; padding: 0; font: inherit; cursor: pointer;">click here</button>.</p>' : ""}
                 <p class="subtitle"><strong>Who can see this?</strong><br>Anyone with a link</p>
                 ${showCreatorWaitingForConfirmation ? '<p class="subtitle"><strong>Status:</strong> Waiting for your friend to send you back their confirmation link.</p>' : ""}
-                ${acceptedFromChallenger && hasChallengerSentConfirmation && !votingPeriod ? '<p class="subtitle"><strong>Next step:</strong> Check back for the countdown and then you\'ll be able to vote.</p>' : ""}
+                ${postConfirmLiveUi && !votingPeriod ? '<p class="subtitle"><strong>Next step:</strong> Check back for the countdown and then you\'ll be able to vote.</p>' : ""}
                 ${!acceptedFromChallenger || !hasChallengerSentConfirmation
                     ? `<button id="share-link" class="${acceptedFromChallenger ? challengerButtonClass : inviteButtonClass}${votingPeriod ? " is-hidden" : ""}" type="button">${acceptedFromChallenger ? challengerButtonLabel : inviteButtonLabel}</button>`
                     : ""}
@@ -2654,7 +2657,7 @@
                 ${p2 || votingPeriod ? "" : '<p class="preview-accept-wrap"><a id="accept-preview" class="preview-accept-link" href="#">Preview what they\'ll see</a></p>'}
                 ${hasChallengerAccepted
                     ? `<button id="call-bet-early-cta" class="cta${votingPeriod ? " is-hidden" : ""}" type="button">Call the bet early</button>${
-                    acceptedFromChallenger && hasChallengerSentConfirmation
+                    postConfirmLiveUi
                         ? `<p class="reshare-confirm-wrap"><button type="button" class="reshare-confirm-link${votingPeriod ? " is-hidden" : ""}" id="share-link">${shareActionLabel("Re-share the link to this bet")}</button></p>`
                         : ""
                 }`
@@ -3293,22 +3296,8 @@
             document.getElementById("challenge-accepted-confirm").addEventListener("click", () => {
                 trackBetsieEvent("betsie_modal", { modal_id: "challenge_accepted", action: "confirm_game_on" });
                 closeChallengeAcceptedModal();
-                const p = getMergedParamsFromLocation();
-                p.set("cs", "gameon");
-                const nextLoc = new URL(window.location.href);
-                nextLoc.search = p.toString();
-                nextLoc.hash = "";
-                history.replaceState({}, "", nextLoc.toString());
-                syncStateVariablesFromParams(getMergedParamsFromLocation());
-                const bid = currentBidFromLocation();
-                if (bid) {
-                    void fetch(`/api/bets/${encodeURIComponent(bid)}`, {
-                        method: "PATCH",
-                        headers: { "Content-Type": "application/json" },
-                        body: JSON.stringify({ cs: "gameon" })
-                    }).catch(() => {});
-                }
-                renderActive();
+                // Full navigation + PATCH like other transitions: lands on / with the same bet params as confirm-agree redirect, but Creator track (no src/review).
+                void updateUrl("active", { cs: "gameon", hf: "", src: "", review: "" });
             });
             challengeAcceptedModal.addEventListener("click", (event) => {
                 if (event.target === challengeAcceptedModal) {
