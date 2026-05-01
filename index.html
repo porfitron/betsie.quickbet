@@ -1570,7 +1570,12 @@
         }
 
         async function updateUrl(nextMode, data = {}) {
-            const nextParams = new URLSearchParams(getMergedParamsFromLocation().toString());
+            const currentParams = getMergedParamsFromLocation();
+            const nextParams = new URLSearchParams(currentParams.toString());
+            const existingBid = currentParams.get("bid") || "";
+            if (existingBid) {
+                nextParams.set("bid", existingBid);
+            }
             const clearedKeysForApi = [];
             if (nextMode) {
                 nextParams.set("mode", nextMode);
