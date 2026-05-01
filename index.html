@@ -1685,7 +1685,8 @@
             if (!bid) {
                 return;
             }
-            const key = isCreatorView ? "cv" : "chv";
+            const viewerIsCreator = (getMergedParamsFromLocation().get("src") || "") !== "accept";
+            const key = viewerIsCreator ? "cv" : "chv";
             try {
                 await fetch(`/api/bets/${encodeURIComponent(bid)}`, {
                     method: "PATCH",
@@ -3487,7 +3488,12 @@
                 }
                 trackBetsieEvent("betsie_modal", { modal_id: "vote_confirm", action: "confirm", choice });
                 closeVoteConfirmModal();
-                await confirmViewerVoteChoice(choice);
+                try {
+                    await confirmViewerVoteChoice(choice);
+                } catch (_) {
+                    alert("Could not save your vote right now. Please try again.");
+                    renderActive();
+                }
             });
             document.getElementById("vote-confirm-cancel").addEventListener("click", () => {
                 trackBetsieEvent("betsie_modal", { modal_id: "vote_confirm", action: "cancel" });
