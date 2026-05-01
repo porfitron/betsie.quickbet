@@ -23,9 +23,19 @@ export default {
     }
 
     if (pathname.startsWith("/api/bets")) {
-      const res = await handleBetRoutes(request, env, url);
-      if (res) {
-        return res;
+      try {
+        const res = await handleBetRoutes(request, env, url);
+        if (res) {
+          return res;
+        }
+      } catch (error) {
+        return Response.json(
+          {
+            error: "bets_api_error",
+            detail: String(error && error.message ? error.message : error),
+          },
+          { status: 500 },
+        );
       }
     }
 
