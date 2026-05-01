@@ -2985,13 +2985,22 @@
                 const role = shareHandoffState.role;
                 const handoffUrl = shareHandoffState.url;
                 trackBetsieEvent("betsie_share_handoff", { action: "primary_share", role });
-                await shareCurrentLink(handoffUrl, { share_context: role === "creator" ? "creator_handoff" : "challenger_handoff" });
-                closeShareHandoffModal();
+                let shared = false;
+                try {
+                    await shareCurrentLink(handoffUrl, { share_context: role === "creator" ? "creator_handoff" : "challenger_handoff" });
+                    shared = true;
+                } finally {
+                    closeShareHandoffModal();
+                    removeHandoffFlashFromAddressBar();
+                }
+                if (!shared) {
+                    return;
+                }
                 if (role === "creator") {
-                    void updateUrl("active", { inv: "1", cs: "invite", hf: "" });
+                    await updateUrl("active", { inv: "1", cs: "invite", hf: "" });
                 } else if (role === "challenger") {
                     trackBetsieEvent("betsie_challenger_step", { step: "respond", source: "handoff_copy" });
-                    void updateUrl("active", { src: "accept", cr: "1", hf: "" });
+                    await updateUrl("active", { src: "accept", cr: "1", hf: "" });
                 }
             });
             document.getElementById("share-handoff-copy").addEventListener("click", async () => {
@@ -3016,10 +3025,11 @@
                     );
                 }
                 closeShareHandoffModal();
+                removeHandoffFlashFromAddressBar();
                 if (role === "creator") {
-                    void updateUrl("active", { inv: "1", cs: "invite", hf: "" });
+                    await updateUrl("active", { inv: "1", cs: "invite", hf: "" });
                 } else if (role === "challenger") {
-                    void updateUrl("active", { src: "accept", cr: "1", hf: "" });
+                    await updateUrl("active", { src: "accept", cr: "1", hf: "" });
                 }
             });
             shareHandoffModal.addEventListener("click", (event) => {
