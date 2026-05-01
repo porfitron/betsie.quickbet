@@ -31,6 +31,7 @@
             const incoming = new URL(window.location.href);
             const next = new URL(`${window.location.origin}/`);
             next.search = incoming.search;
+            next.searchParams.set("mode", "accept");
             next.hash = incoming.hash;
             window.location.replace(next.toString());
         })();
