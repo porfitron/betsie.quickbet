@@ -1490,6 +1490,16 @@
             });
         }
 
+        function preserveViewerTrackParams(targetParams, localParams) {
+            // Keep viewer role local. DB state is shared, but src determines creator vs challenger track.
+            const localSource = localParams.get("src") || "";
+            if (localSource) {
+                targetParams.set("src", localSource);
+            } else {
+                targetParams.delete("src");
+            }
+        }
+
         function shareableParamsToApiBody(p) {
             const body = {};
             SHAREABLE_STATE_KEYS.forEach((key) => {
@@ -1514,6 +1524,7 @@
                 }
                 const row = await res.json();
                 applyApiBetRowToParams(row, p);
+                preserveViewerTrackParams(p, explicitUrlParams);
                 p.set("bid", bid);
                 // Preserve explicit URL intent so button transitions are not overridden by stale DB fields.
                 SHAREABLE_STATE_KEYS.forEach((key) => {
@@ -2820,6 +2831,7 @@
                         const currentParams = getMergedParamsFromLocation();
                         const nextParams = new URLSearchParams(currentParams.toString());
                         applyApiBetRowToParams(row, nextParams);
+                        preserveViewerTrackParams(nextParams, currentParams);
                         nextParams.set("bid", bid);
                         const hasRemoteAcceptedPosition = Boolean(nextParams.get("p2"));
                         const isNewAcceptedPosition = hasRemoteAcceptedPosition && !p2;
