@@ -19,6 +19,7 @@ const PATCH_KEYS = [
   "hf",
   "ev",
   "ee",
+  "eab",
 ];
 
 const COL = {
@@ -39,6 +40,7 @@ const COL = {
   hf: "handoff_flash",
   ev: "early_vote",
   ee: "early_ended_at",
+  eab: "early_called_by",
 };
 
 function rowToApi(row) {
@@ -66,6 +68,7 @@ function rowToApi(row) {
     hf: row.handoff_flash ?? "",
     ev: row.early_vote ?? "",
     ee: row.early_ended_at ?? "",
+    eab: row.early_called_by ?? "",
   };
 }
 

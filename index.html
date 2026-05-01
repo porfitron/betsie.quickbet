@@ -1331,6 +1331,15 @@
             </div>
         </div>
     </div>
+    <div id="early-call-notify-modal" class="modal-overlay is-hidden" role="dialog" aria-modal="true" aria-labelledby="early-call-notify-title">
+        <div class="modal-card">
+            <h2 id="early-call-notify-title" class="modal-title">The bet was called early</h2>
+            <p class="modal-text">The countdown stopped. You can vote on the outcome now.</p>
+            <div class="modal-actions">
+                <button id="early-call-notify-vote" class="cta" type="button">Vote now</button>
+            </div>
+        </div>
+    </div>
     <div id="celebration-modal" class="celebration-overlay is-hidden" role="dialog" aria-modal="true" aria-labelledby="celebration-title">
         <div class="celebration-card">
             <img
@@ -1360,13 +1369,14 @@
         const shareHandoffModal = document.getElementById("share-handoff-modal");
         const earlyEndModal = document.getElementById("early-end-modal");
         const challengeAcceptedModal = document.getElementById("challenge-accepted-modal");
+        const earlyCallNotifyModal = document.getElementById("early-call-notify-modal");
         const celebrationModal = document.getElementById("celebration-modal");
         const shareHandoffState = { role: null, url: "" };
         let settleShareUrlForModal = "";
         const url = new URL(window.location.href);
         const HASH_STATE_VERSION = 1;
-        const SHAREABLE_STATE_KEYS = ["mode", "t", "cn", "chn", "p1", "p2", "d", "tt", "ct", "w", "src", "cs", "inv", "cr", "hf", "ev", "ee"];
-        const SEARCH_FALLBACK_KEYS = ["mode", "t", "d", "cn", "chn", "p1", "p2", "tt", "ct", "w", "src", "cr", "ev", "ee"];
+        const SHAREABLE_STATE_KEYS = ["mode", "t", "cn", "chn", "p1", "p2", "d", "tt", "ct", "w", "src", "cs", "inv", "cr", "hf", "ev", "ee", "eab"];
+        const SEARCH_FALLBACK_KEYS = ["mode", "t", "d", "cn", "chn", "p1", "p2", "tt", "ct", "w", "src", "cr", "ev", "ee", "eab"];
         const FIELD_LIMITS = {
             name: 20,
             claim: 70,
@@ -1571,6 +1581,7 @@
         let handoffFlash = "";
         let earlyVote = "";
         let earlyEndedAt = "";
+        let earlyCalledBy = "";
         let activeStateSyncTimer = null;
 
         function syncStateVariablesFromParams(p) {
@@ -1593,6 +1604,7 @@
             handoffFlash = p.get("hf") || "";
             earlyVote = p.get("ev") || "";
             earlyEndedAt = p.get("ee") || "";
+            earlyCalledBy = p.get("eab") || "";
         }
 
         function currentBidFromLocation() {
@@ -2126,6 +2138,22 @@
 
         function closeChallengeAcceptedModal() {
             challengeAcceptedModal.classList.add("is-hidden");
+        }
+
+        function openEarlyCallNotifyModal(titleText) {
+            const titleEl = document.getElementById("early-call-notify-title");
+            if (titleEl) {
+                titleEl.textContent = titleText || "The bet was called early";
+            }
+            earlyCallNotifyModal.classList.remove("is-hidden");
+            const voteBtn = document.getElementById("early-call-notify-vote");
+            if (voteBtn) {
+                voteBtn.focus();
+            }
+        }
+
+        function closeEarlyCallNotifyModal() {
+            earlyCallNotifyModal.classList.add("is-hidden");
         }
 
         function closeCelebrationModal() {
@@ -2875,6 +2903,28 @@
                                 trackBetsieEvent("betsie_modal", { modal_id: "challenge_accepted", action: "auto_open" });
                                 openChallengeAcceptedModal();
                                 return;
+                            }
+                            if (isNewEarlyVote) {
+                                const viewerIsCreator = !(currentParams.get("src") === "accept");
+                                const eabVal = (nextParams.get("eab") || "");
+                                let showEarlyNotify = false;
+                                let earlyNotifyTitle = "The bet was called early";
+                                if (eabVal === "1") {
+                                    showEarlyNotify = !viewerIsCreator;
+                                    earlyNotifyTitle = "Creator calls it early";
+                                } else if (eabVal === "2") {
+                                    showEarlyNotify = viewerIsCreator;
+                                    earlyNotifyTitle = "Challenger calls it early";
+                                }
+                                if (showEarlyNotify) {
+                                    trackBetsieEvent("betsie_modal", {
+                                        modal_id: "early_call_notify",
+                                        action: "auto_open",
+                                        eab: eabVal
+                                    });
+                                    openEarlyCallNotifyModal(earlyNotifyTitle);
+                                    return;
+                                }
                             }
                             renderActive();
                         }
