@@ -1416,8 +1416,9 @@
         let settleShareUrlForModal = "";
         const url = new URL(window.location.href);
         const HASH_STATE_VERSION = 1;
-        const SHAREABLE_STATE_KEYS = ["mode", "t", "cn", "chn", "p1", "p2", "d", "tt", "ct", "w", "src", "cs", "inv", "cr", "hf", "ev", "ee", "eab", "cv", "chv"];
-        const SEARCH_FALLBACK_KEYS = ["mode", "t", "d", "cn", "chn", "p1", "p2", "tt", "ct", "w", "src", "cr", "ev", "ee", "eab", "cv", "chv"];
+        const SHAREABLE_STATE_KEYS = ["mode", "t", "cn", "chn", "p1", "p2", "d", "tt", "ct", "w", "src", "cs", "inv", "cr", "hf", "ev", "ee", "eab", "cv", "chv", "vr", "dr"];
+        const SEARCH_FALLBACK_KEYS = ["mode", "t", "d", "cn", "chn", "p1", "p2", "tt", "ct", "w", "src", "cr", "ev", "ee", "eab", "cv", "chv", "vr", "dr"];
+        const MAX_VOTE_ROUNDS = 2;
         const FIELD_LIMITS = {
             name: 20,
             claim: 70,
@@ -1625,6 +1626,8 @@
         let earlyCalledBy = "";
         let creatorVoteChoice = "";
         let challengerVoteChoice = "";
+        let voteRound = "";
+        let drawReason = "";
         let activeStateSyncTimer = null;
 
         function syncStateVariablesFromParams(p) {
@@ -1650,6 +1653,8 @@
             earlyCalledBy = p.get("eab") || "";
             creatorVoteChoice = p.get("cv") || "";
             challengerVoteChoice = p.get("chv") || "";
+            voteRound = p.get("vr") || "";
+            drawReason = p.get("dr") || "";
         }
 
         function currentBidFromLocation() {
@@ -2173,7 +2178,9 @@
             if (shareContext === "settle_result") {
                 const samePosition = Boolean(challengerPosition) && challengerPosition === claim;
                 const lines = [];
-                if (winner === "0") {
+                if (winner === "3") {
+                    lines.push("Result: Draw / Disagreement.");
+                } else if (winner === "0") {
                     lines.push("Result: No Contest.");
                 } else if (samePosition && winner === "1") {
                     lines.push("Result: both were right.");
@@ -2206,6 +2213,8 @@
                     lines.push("Nobody called it this time.");
                 } else if (winner === "0") {
                     lines.push("Something else happened.");
+                } else if (winner === "3") {
+                    lines.push("Players did not agree after a final re-vote.");
                 }
                 return lines.join("\n");
             }
@@ -2921,11 +2930,15 @@
             const hasViewerVoted = Boolean(viewerVoteChoice);
             const opponentVoteChoice = isCreatorView ? challengerVoteChoice : creatorVoteChoice;
             const hasOpponentVoted = Boolean(opponentVoteChoice);
+            const voteRoundNumber = Math.max(1, Number.parseInt(voteRound || "1", 10) || 1);
+            const isRevoteRound = voteRoundNumber > 1 && winner !== "3";
             const opponentName = isCreatorView ? challengerName : creatorName;
             const opponentDisplayName = cleanFieldText(opponentName, FIELD_LIMITS.name) || (isCreatorView ? "Challenger" : "Creator");
             const votingCountdownLabel = hasViewerVoted && !hasOpponentVoted
                 ? `${opponentDisplayName} Needs to Vote`
-                : "Pick Your Winner";
+                : isRevoteRound
+                  ? "Disputed, Vote Again!"
+                  : "Pick Your Winner";
             const showCreatorWaitingForConfirmation =
                 isCreatorView && flowStep === "invite" && !hasChallengerSentConfirmation && !isCreatorGameOn;
             // Same live-bet chrome as after /share/confirm-agree/ → / (calendar, next step, re-share): challenger had accepted + confirmation sent, on either track.
@@ -2960,6 +2973,7 @@
                 ${showCreatorWaitingForConfirmation ? '<p class="subtitle"><strong>Status:</strong> Waiting for your friend to send you back their confirmation link.</p>' : ""}
                 ${postConfirmLiveUi && !votingPeriod ? '<p class="subtitle"><strong>Next step:</strong> Check back for the countdown and then you\'ll be able to vote.</p>' : ""}
                 ${hasViewerVoted ? '<p class="subtitle"><strong>Status:</strong> Waiting for all the votes...</p>' : ""}
+                ${postConfirmLiveUi && votingPeriod && isRevoteRound ? '<p class="subtitle"><strong>Status:</strong> Results disputed - one final re-vote required.</p>' : ""}
                 ${debugVotesMode ? `<p class="subtitle" style="font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px;"><strong>Debug:</strong> bid=${escapeHtml(bid || "none")} | cv=${escapeHtml(creatorVoteChoice || "∅")} | chv=${escapeHtml(challengerVoteChoice || "∅")} | src=${escapeHtml(source || "creator")}</p>` : ""}
                 ${hasViewerVoted && !hasOpponentVoted ? `<p class="subtitle" style="text-align: center; margin-top: 6px;"><button id="send-vote-reminder" class="cta" type="button">${shareActionLabel("Send a reminder")}</button></p>` : ""}
                 ${(!acceptedFromChallenger || !hasChallengerSentConfirmation) && !isCreatorGameOn
@@ -3217,6 +3231,11 @@
                             history.replaceState({}, "", nextLoc.toString());
                         }
 
+                        const remoteWinner = nextParams.get("w") || "";
+                        if (remoteWinner === "3") {
+                            void updateUrl("settle", { w: "3", dr: nextParams.get("dr") || "draw_disagreement" });
+                            return;
+                        }
                         const remoteCreatorVote = nextParams.get("cv") || "";
                         const remoteChallengerVote = nextParams.get("chv") || "";
                         if (remoteCreatorVote && remoteChallengerVote) {
@@ -3229,22 +3248,37 @@
                                         ? "0"
                                         : "";
                                 if (winnerByVote) {
-                                    void updateUrl("settle", { w: winnerByVote });
+                                    void updateUrl("settle", { w: winnerByVote, dr: "" });
                                     return;
                                 }
                             } else {
-                                trackBetsieEvent("betsie_vote", { choice: "reset_due_disagreement", phase: "after_deadline" });
+                                const currentVoteRound = Math.max(1, Number.parseInt(nextParams.get("vr") || "1", 10) || 1);
+                                if (currentVoteRound < MAX_VOTE_ROUNDS) {
+                                    trackBetsieEvent("betsie_vote", { choice: "reset_due_disagreement", phase: "after_deadline", round: String(currentVoteRound) });
+                                    try {
+                                        await fetch(`/api/bets/${encodeURIComponent(bid)}`, {
+                                            method: "PATCH",
+                                            headers: { "Content-Type": "application/json" },
+                                            body: JSON.stringify({ cv: null, chv: null, w: null, vr: "2", dr: "draw_disagreement" })
+                                        });
+                                    } catch (_) {
+                                        // If reset fails, keep current state and retry on next poll.
+                                    }
+                                    alert("Votes did not match. Results disputed - one final re-vote is required.");
+                                    void updateUrl("active", { cv: "", chv: "", w: "", vr: "2", dr: "draw_disagreement" });
+                                    return;
+                                }
+                                trackBetsieEvent("betsie_vote", { choice: "draw_due_disagreement", phase: "after_deadline", round: String(currentVoteRound) });
                                 try {
                                     await fetch(`/api/bets/${encodeURIComponent(bid)}`, {
                                         method: "PATCH",
                                         headers: { "Content-Type": "application/json" },
-                                        body: JSON.stringify({ cv: null, chv: null, w: null })
+                                        body: JSON.stringify({ w: "3", dr: "draw_disagreement", vr: String(currentVoteRound) })
                                     });
                                 } catch (_) {
-                                    // If reset fails, keep current state and retry on next poll.
+                                    // If draw finalize fails, keep current state and retry on next poll.
                                 }
-                                alert("Votes did not match. Please vote again.");
-                                void updateUrl("active", { cv: "", chv: "", w: "" });
+                                void updateUrl("settle", { w: "3", dr: "draw_disagreement", vr: String(currentVoteRound) });
                                 return;
                             }
                         }
@@ -3417,6 +3451,8 @@
             const betEndedDateSource = hasValidEarlyEndDate ? parsedEarlyEndedAt : (deadline || "");
             const betDateLabel = betEndedDateSource ? new Date(betEndedDateSource).toLocaleDateString() : "";
             const noContest = winner === "0";
+            const drawDisagreement = winner === "3";
+            const drawReasonLabel = drawReason === "draw_disagreement" ? "Draw / Disagreement" : "Draw";
             const bothWin = samePosition && winner === "1";
             const bothLose = samePosition && winner === "2";
             const creatorIsWinner = bothWin || (!bothLose && winner === "1");
@@ -3453,6 +3489,9 @@
                 if (noContest) {
                     return "No Contest!";
                 }
+                if (drawDisagreement) {
+                    return "Ended in a Draw";
+                }
                 if (samePosition && winner === "1") {
                     return "Both win this round";
                 }
@@ -3466,7 +3505,9 @@
             })();
             const settleShareUrl = (() => {
                 const resultUrl = new URL(toCompressedHashUrl(window.location.href));
-                if (winner === "0") {
+                if (winner === "3") {
+                    resultUrl.pathname = "/share/result-draw-disagreement/";
+                } else if (winner === "0") {
                     resultUrl.pathname = "/share/result-no-contest/";
                 } else if (samePosition && winner === "1") {
                     resultUrl.pathname = "/share/result-both-right/";
@@ -3485,6 +3526,7 @@
                     <div class="brand-row"><span class="brand-label">Bet Receipt</span></div>
                     <h1>${settleHeadline}</h1>
                     ${betDateLabel ? `<p class="subtitle" style="text-align: center; margin-top: 0; margin-bottom: 2px;">Bet ended: ${escapeHtml(betDateLabel)}</p>` : ""}
+                    ${drawDisagreement ? `<p class="subtitle" style="text-align: center; margin-top: 0; margin-bottom: 2px;">Reason: ${escapeHtml(drawReasonLabel)}</p>` : ""}
                     <p class="subtitle" style="text-align: center; margin-top: 4px; margin-bottom: 10px; line-height: 1;"><button id="save-results-pill" class="pill save-results-pill" type="button">${saveImageActionLabel("Download receipt")}</button></p>
                     <section class="matchup" aria-label="Final head to head">
                         ${creatorCardHtml}
