@@ -2399,19 +2399,26 @@
         }
 
         function renderCreatorBreadcrumb(step, allowForwardNav = false) {
-            const order = ["create", "confirm", "invite"];
+            const order = step === "gameon" ? ["create", "confirm", "invite", "gameon"] : ["create", "confirm", "invite"];
             const currentIndex = order.indexOf(step);
             const canVisit = (target) => {
                 const targetIndex = order.indexOf(target);
                 return targetIndex <= currentIndex || allowForwardNav;
             };
+            const fourthCrumb =
+                order.length === 4
+                    ? `
+                    <span class="crumb-sep" aria-hidden="true"></span>
+                    <button type="button" class="crumb ${step === "gameon" ? "is-current" : ""}" data-step-number="04" data-creator-step="gameon" disabled>Game On</button>`
+                    : "";
             return `
                 <nav class="creator-breadcrumb" aria-label="Creator progress">
                     <button type="button" class="crumb ${step === "create" ? "is-current" : currentIndex > 0 ? "is-complete" : ""}" data-step-number="01" data-creator-step="create" ${canVisit("create") ? "" : "disabled"}>Create</button>
                     <span class="crumb-sep" aria-hidden="true"></span>
                     <button type="button" class="crumb ${step === "confirm" ? "is-current" : currentIndex > 1 ? "is-complete" : ""}" data-step-number="02" data-creator-step="confirm" ${canVisit("confirm") ? "" : "disabled"}>Confirm</button>
                     <span class="crumb-sep" aria-hidden="true"></span>
-                    <button type="button" class="crumb ${step === "invite" ? "is-current" : ""}" data-step-number="03" data-creator-step="invite" ${canVisit("invite") ? "" : "disabled"}>Invite</button>
+                    <button type="button" class="crumb ${step === "invite" ? "is-current" : currentIndex > 2 ? "is-complete" : ""}" data-step-number="03" data-creator-step="invite" ${canVisit("invite") ? "" : "disabled"}>Invite</button>
+                    ${fourthCrumb}
                 </nav>
             `;
         }
@@ -2423,6 +2430,9 @@
                     if (nextStep === "create") {
                         trackBetsieEvent("betsie_creator_step", { step: "create", source: "breadcrumb" });
                         void updateUrl("create");
+                        return;
+                    }
+                    if (nextStep === "gameon") {
                         return;
                     }
                     if (nextStep === "invite" && invited !== "1") {
@@ -2551,6 +2561,14 @@
             const isCreatorView = !acceptedFromChallenger;
             const hasInvitedChallenger = invited === "1";
             const flowStep = hasChallengerAccepted || hasInvitedChallenger ? "invite" : "confirm";
+            const creatorBreadcrumbStep =
+                hasChallengerAccepted || creatorStep === "gameon"
+                    ? "gameon"
+                    : invited === "1" || creatorStep === "invite"
+                      ? "invite"
+                      : creatorStep === "create"
+                        ? "create"
+                        : "confirm";
             const inviteButtonText = hasInvitedChallenger ? "Send a reminder" : "Invite challenger";
             const inviteButtonLabel = shareActionLabel(inviteButtonText);
             const inviteButtonClass = "cta";
@@ -2602,7 +2620,7 @@
             const showCreatorWaitingForConfirmation =
                 isCreatorView && flowStep === "invite" && !hasChallengerSentConfirmation;
             app.innerHTML = `
-                ${isCreatorView ? renderCreatorBreadcrumb(flowStep, true) : renderChallengerBreadcrumb(challengerFlowStep)}
+                ${isCreatorView ? renderCreatorBreadcrumb(creatorBreadcrumbStep, true) : renderChallengerBreadcrumb(challengerFlowStep)}
                 <h1>${escapedTitle || "Your Bet"}</h1>
                 <div class="countdown" id="countdown">--</div>
                 <p class="subtitle bet-timing-line" style="text-align: center; margin-top: 0; margin-bottom: 2px;">${betTimingLabel}</p>
@@ -2797,9 +2815,15 @@
                 }
                 document.getElementById("creator-won").classList.toggle("is-hidden", !isVotingPeriod);
                 document.getElementById("challenger-won").classList.toggle("is-hidden", !isVotingPeriod);
-                document.getElementById("share-link").classList.toggle("is-hidden", isVotingPeriod);
+                const shareLinkEl = document.getElementById("share-link");
+                if (shareLinkEl) {
+                    shareLinkEl.classList.toggle("is-hidden", isVotingPeriod);
+                }
                 if (hasChallengerAccepted) {
-                    document.getElementById("call-bet-early-cta").classList.toggle("is-hidden", isVotingPeriod);
+                    const callEarlyEl = document.getElementById("call-bet-early-cta");
+                    if (callEarlyEl) {
+                        callEarlyEl.classList.toggle("is-hidden", isVotingPeriod);
+                    }
                 }
             }
 
@@ -3269,6 +3293,21 @@
             document.getElementById("challenge-accepted-confirm").addEventListener("click", () => {
                 trackBetsieEvent("betsie_modal", { modal_id: "challenge_accepted", action: "confirm_game_on" });
                 closeChallengeAcceptedModal();
+                const p = getMergedParamsFromLocation();
+                p.set("cs", "gameon");
+                const nextLoc = new URL(window.location.href);
+                nextLoc.search = p.toString();
+                nextLoc.hash = "";
+                history.replaceState({}, "", nextLoc.toString());
+                syncStateVariablesFromParams(getMergedParamsFromLocation());
+                const bid = currentBidFromLocation();
+                if (bid) {
+                    void fetch(`/api/bets/${encodeURIComponent(bid)}`, {
+                        method: "PATCH",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ cs: "gameon" })
+                    }).catch(() => {});
+                }
                 renderActive();
             });
             challengeAcceptedModal.addEventListener("click", (event) => {
