@@ -2552,12 +2552,12 @@
                     trackBetsieEvent("betsie_share_intent", { share_context: shareContext });
                     await shareCurrentLink(shareTargetUrl, { share_context: shareContext });
                     if (isCreatorView && !hasChallengerAccepted && !hasInvitedChallenger) {
-                        void updateUrl("active", { inv: "1", cs: "invite" });
+                        void updateUrl("active", { inv: "1", cs: "invite", hf: "" });
                         return;
                     }
                     if (!isCreatorView && !hasChallengerSentConfirmation) {
                         trackBetsieEvent("betsie_challenger_step", { step: "respond", source: "share_button" });
-                        void updateUrl("active", { src: "accept", cr: "1" });
+                        void updateUrl("active", { src: "accept", cr: "1", hf: "" });
                     }
                 });
             }
@@ -2981,10 +2981,10 @@
                 await shareCurrentLink(handoffUrl, { share_context: role === "creator" ? "creator_handoff" : "challenger_handoff" });
                 closeShareHandoffModal();
                 if (role === "creator") {
-                    void updateUrl("active", { inv: "1", cs: "invite" });
+                    void updateUrl("active", { inv: "1", cs: "invite", hf: "" });
                 } else if (role === "challenger") {
                     trackBetsieEvent("betsie_challenger_step", { step: "respond", source: "handoff_copy" });
-                    void updateUrl("active", { src: "accept", cr: "1" });
+                    void updateUrl("active", { src: "accept", cr: "1", hf: "" });
                 }
             });
             document.getElementById("share-handoff-copy").addEventListener("click", async () => {
@@ -3010,9 +3010,9 @@
                 }
                 closeShareHandoffModal();
                 if (role === "creator") {
-                    void updateUrl("active", { inv: "1", cs: "invite" });
+                    void updateUrl("active", { inv: "1", cs: "invite", hf: "" });
                 } else if (role === "challenger") {
-                    void updateUrl("active", { src: "accept", cr: "1" });
+                    void updateUrl("active", { src: "accept", cr: "1", hf: "" });
                 }
             });
             shareHandoffModal.addEventListener("click", (event) => {
