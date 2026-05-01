@@ -4,6 +4,7 @@
 .cursor/
 src/
 functions/
+migrations/
 MD/
 
 .gitignore

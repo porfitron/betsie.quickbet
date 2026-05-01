@@ -1,3 +1,6 @@
+// D1: `npx wrangler login` → `npx wrangler d1 create quickbet`
+// Replace `database_id` below with the UUID from that command (not the placeholder).
+// Then: `npx wrangler d1 migrations apply quickbet --remote`
 {
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "quickbet",
@@ -12,9 +15,13 @@
   },
   "compatibility_flags": [
     "nodejs_compat"
+  ],
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "quickbet",
+      "database_id": "00000000-0000-0000-0000-000000000001",
+      "migrations_dir": "migrations"
+    }
   ]
-  // After: npx wrangler d1 create quickbet (or your DB name)
-  // "d1_databases": [
-  //   { "binding": "DB", "database_name": "quickbet", "database_id": "PASTE_UUID" }
-  // ],
 }
