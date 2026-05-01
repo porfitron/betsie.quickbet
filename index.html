@@ -2171,12 +2171,12 @@
             history.replaceState({}, "", next.toString());
         }
 
-        function hasCreatorReviewRequestInAddressBar() {
+        function reviewRequestInAddressBar() {
             const next = new URL(window.location.href);
-            return next.searchParams.get("review") === "1";
+            return next.searchParams.get("review") || "";
         }
 
-        function removeCreatorReviewRequestFromAddressBar() {
+        function removeReviewRequestFromAddressBar() {
             const next = new URL(window.location.href);
             if (!next.searchParams.has("review")) {
                 return;
@@ -2486,7 +2486,7 @@
                     cs: "confirm",
                     inv: "",
                     hf: "",
-                    review: "1"
+                    review: "creator"
                 });
             });
             bindCreatorBreadcrumb();
@@ -2698,17 +2698,28 @@
             }
 
             const hasDbBackedBet = Boolean(currentBidFromLocation());
+            const reviewRequest = reviewRequestInAddressBar();
             const shouldAutoCreatorReview =
-                hasCreatorReviewRequestInAddressBar() &&
+                reviewRequest === "creator" &&
                 isCreatorView &&
                 !hasChallengerAccepted &&
                 !hasInvitedChallenger &&
                 flowStep === "confirm";
+            const shouldAutoChallengerReview =
+                reviewRequest === "challenger" &&
+                acceptedFromChallenger &&
+                !hasChallengerSentConfirmation;
             if (shouldAutoCreatorReview) {
-                removeCreatorReviewRequestFromAddressBar();
+                removeReviewRequestFromAddressBar();
                 requestAnimationFrame(() => {
                     trackBetsieEvent("betsie_share_handoff", { action: "auto_open", role: "creator" });
                     openShareHandoffModal("creator", challengeShareUrl, creatorName, challengerName);
+                });
+            } else if (shouldAutoChallengerReview) {
+                removeReviewRequestFromAddressBar();
+                requestAnimationFrame(() => {
+                    trackBetsieEvent("betsie_share_handoff", { action: "auto_open", role: "challenger" });
+                    openShareHandoffModal("challenger", confirmationShareUrl, creatorName, challengerName);
                 });
             }
             const shouldAutoCreatorHandoff =
@@ -2877,7 +2888,8 @@
                     ct: nextChallengerTrashTalk,
                     src: "accept",
                     cr: "",
-                    hf: "ch"
+                    hf: "",
+                    review: "challenger"
                 });
             });
             bindChallengerBreadcrumb();
