@@ -2427,26 +2427,27 @@
         }
 
         function renderCreatorBreadcrumb(step, allowForwardNav = false) {
-            const order = step === "gameon" ? ["create", "confirm", "invite", "gameon"] : ["create", "confirm", "invite"];
+            const order = step === "gameon" ? ["create", "confirm", "gameon"] : ["create", "confirm", "invite"];
             const currentIndex = order.indexOf(step);
             const canVisit = (target) => {
                 const targetIndex = order.indexOf(target);
                 return targetIndex <= currentIndex || allowForwardNav;
             };
-            const fourthCrumb =
-                order.length === 4
+            const gameOnCrumb =
+                step === "gameon"
                     ? `
                     <span class="crumb-sep" aria-hidden="true"></span>
-                    <button type="button" class="crumb ${step === "gameon" ? "is-current" : ""}" data-step-number="04" data-creator-step="gameon" disabled>Game On</button>`
+                    <button type="button" class="crumb is-current" data-step-number="03" data-creator-step="gameon" disabled>Game On</button>`
                     : "";
             return `
                 <nav class="creator-breadcrumb" aria-label="Creator progress">
                     <button type="button" class="crumb ${step === "create" ? "is-current" : currentIndex > 0 ? "is-complete" : ""}" data-step-number="01" data-creator-step="create" ${canVisit("create") ? "" : "disabled"}>Create</button>
                     <span class="crumb-sep" aria-hidden="true"></span>
                     <button type="button" class="crumb ${step === "confirm" ? "is-current" : currentIndex > 1 ? "is-complete" : ""}" data-step-number="02" data-creator-step="confirm" ${canVisit("confirm") ? "" : "disabled"}>Confirm</button>
+                    ${step === "gameon" ? "" : `
                     <span class="crumb-sep" aria-hidden="true"></span>
-                    <button type="button" class="crumb ${step === "invite" ? "is-current" : currentIndex > 2 ? "is-complete" : ""}" data-step-number="03" data-creator-step="invite" ${canVisit("invite") ? "" : "disabled"}>Invite</button>
-                    ${fourthCrumb}
+                    <button type="button" class="crumb ${step === "invite" ? "is-current" : currentIndex > 2 ? "is-complete" : ""}" data-step-number="03" data-creator-step="invite" ${canVisit("invite") ? "" : "disabled"}>Invite</button>`}
+                    ${gameOnCrumb}
                 </nav>
             `;
         }
@@ -2645,11 +2646,12 @@
             const samePosition = challengerAgreesWithCreator;
             const creatorVoteLabel = samePosition ? "Both Right!" : `${escapedCreatorName} Won!`;
             const challengerVoteLabel = samePosition ? "Both Wrong!" : `${escapedChallengerName} Won!`;
+            const isCreatorGameOn = isCreatorView && creatorStep === "gameon";
             const showCreatorWaitingForConfirmation =
-                isCreatorView && flowStep === "invite" && !hasChallengerSentConfirmation;
+                isCreatorView && flowStep === "invite" && !hasChallengerSentConfirmation && !isCreatorGameOn;
             // Same live-bet chrome as after /share/confirm-agree/ → / (calendar, next step, re-share): challenger had accepted + confirmation sent, on either track.
             const postConfirmLiveUi =
-                hasChallengerAccepted && hasChallengerSentConfirmation && (acceptedFromChallenger || isCreatorView);
+                (hasChallengerAccepted && hasChallengerSentConfirmation && (acceptedFromChallenger || isCreatorView)) || isCreatorGameOn;
             app.innerHTML = `
                 ${isCreatorView ? renderCreatorBreadcrumb(creatorBreadcrumbStep, true) : renderChallengerBreadcrumb(challengerFlowStep)}
                 <h1>${escapedTitle || "Your Bet"}</h1>
@@ -2678,7 +2680,7 @@
                 <p class="subtitle"><strong>Who can see this?</strong><br>Anyone with a link</p>
                 ${showCreatorWaitingForConfirmation ? '<p class="subtitle"><strong>Status:</strong> Waiting for your friend to send you back their confirmation link.</p>' : ""}
                 ${postConfirmLiveUi && !votingPeriod ? '<p class="subtitle"><strong>Next step:</strong> Check back for the countdown and then you\'ll be able to vote.</p>' : ""}
-                ${!acceptedFromChallenger || !hasChallengerSentConfirmation
+                ${(!acceptedFromChallenger || !hasChallengerSentConfirmation) && !isCreatorGameOn
                     ? `<button id="share-link" class="${acceptedFromChallenger ? challengerButtonClass : inviteButtonClass}${votingPeriod ? " is-hidden" : ""}" type="button">${acceptedFromChallenger ? challengerButtonLabel : inviteButtonLabel}</button>`
                     : ""}
                 ${acceptedFromChallenger && !hasChallengerSentConfirmation ? '<p class="subtitle">Sharing the confirmation link allows you to watch the bet and vote when timer is done.</p>' : ""}
