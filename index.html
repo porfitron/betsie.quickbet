@@ -936,6 +936,18 @@
             gap: 8px;
         }
 
+        .challenge-accepted-gif {
+            display: block;
+            width: calc(100% + 32px);
+            max-width: none;
+            margin: -18px -16px 12px;
+            max-height: 160px;
+            object-fit: cover;
+            object-position: center top;
+            border-radius: 15px 15px 0 0;
+            background: #111827;
+        }
+
         .landing-preview-card {
             width: min(100%, 620px);
             max-height: min(86vh, 920px);
@@ -1350,12 +1362,19 @@
             </div>
         </div>
     </div>
-    <div id="challenge-accepted-modal" class="modal-overlay is-hidden" role="dialog" aria-modal="true" aria-labelledby="challenge-accepted-title">
+    <div id="challenge-accepted-modal" class="modal-overlay is-hidden" role="alertdialog" aria-modal="true" aria-labelledby="challenge-accepted-title">
         <div class="modal-card">
+            <img
+                class="challenge-accepted-gif"
+                src="https://media2.giphy.com/media/v1.Y2lkPTc5MGI3NjExbW81ano1OWN4Ync3OGI2cDZjajk0ZWxmemF3ZHJ3ZTByNmlodzU4YyZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9Zw/BTe6OassV0iDS/giphy.gif"
+                alt="Animated character beckoning, ready for action"
+                width="380"
+                height="160"
+                decoding="async">
             <h2 id="challenge-accepted-title" class="modal-title">Challenge Accepted</h2>
-            <p class="modal-text">Your challenger locked in their position. Time to go to Game On.</p>
+            <p class="modal-text">Your challenger locked in their position.</p>
             <div class="modal-actions">
-                <button id="challenge-accepted-confirm" class="cta" type="button">Game On</button>
+                <button id="challenge-accepted-confirm" class="cta" type="button">Let's Do This!</button>
             </div>
         </div>
     </div>
@@ -1552,6 +1571,57 @@
             }
         }
 
+        function preserveChallengerDraftFromLocalParams(localParams, targetParams) {
+            const src = localParams.get("src") || "";
+            const cr = localParams.get("cr") || "";
+            if (src !== "accept" || cr === "1") {
+                return;
+            }
+            ["chn", "p2", "ct"].forEach((key) => {
+                const v = localParams.get(key);
+                if (v) {
+                    targetParams.set(key, v);
+                }
+            });
+        }
+
+        function isApiBetRowSettled(row) {
+            return Boolean(row && typeof row === "object" && String(row.w || "").trim() !== "");
+        }
+
+        /** When GET /api/bets/:id reports an outcome (w), URL/query cannot keep a stale mode=active from bookmarks or calendar links. */
+        function canonicalizeSettledParamsFromApiRow(row, targetParams) {
+            if (!isApiBetRowSettled(row)) {
+                return;
+            }
+            targetParams.set("mode", "settle");
+            targetParams.set("w", String(row.w));
+            const dr = row.dr;
+            if (dr !== undefined && dr !== null && String(dr) !== "") {
+                targetParams.set("dr", String(dr));
+            } else {
+                targetParams.delete("dr");
+            }
+            const vr = row.vr;
+            if (vr !== undefined && vr !== null && String(vr) !== "") {
+                targetParams.set("vr", String(vr));
+            } else {
+                targetParams.delete("vr");
+            }
+        }
+
+        function redirectToSettleFromApiRow(row) {
+            if (!isApiBetRowSettled(row)) {
+                return false;
+            }
+            void updateUrl("settle", {
+                w: String(row.w),
+                dr: row.dr != null && String(row.dr) !== "" ? String(row.dr) : "",
+                vr: row.vr != null && String(row.vr) !== "" ? String(row.vr) : ""
+            });
+            return true;
+        }
+
         function shareableParamsToApiBody(p) {
             const body = {};
             SHAREABLE_STATE_KEYS.forEach((key) => {
@@ -1587,6 +1657,7 @@
                 if (explicitUrlParams.has("review")) {
                     p.set("review", explicitUrlParams.get("review") || "");
                 }
+                canonicalizeSettledParamsFromApiRow(row, p);
                 const mergedDisplay = new URLSearchParams(p.toString());
                 const currentDisplay = new URLSearchParams(new URL(window.location.href).search);
                 if (!paramsEquivalent(mergedDisplay, currentDisplay)) {
@@ -1888,7 +1959,7 @@
             }
         }
 
-        async function updateUrl(nextMode, data = {}) {
+        async function updateUrl(nextMode, data = {}, options = {}) {
             const currentParams = getMergedParamsFromLocation();
             const nextParams = new URLSearchParams(currentParams.toString());
             const existingBid = currentParams.get("bid") || "";
@@ -1922,29 +1993,32 @@
                 nextParams.get("t") &&
                 nextParams.get("d") &&
                 nextParams.get("cn");
-            try {
-                if (bid) {
-                    await fetch(`/api/bets/${encodeURIComponent(bid)}`, {
-                        method: "PATCH",
-                        headers: { "Content-Type": "application/json" },
-                        body: JSON.stringify(body)
-                    });
-                } else if (shouldCreateNewBet) {
-                    const res = await fetch("/api/bets", {
-                        method: "POST",
-                        headers: { "Content-Type": "application/json" },
-                        body: JSON.stringify(body)
-                    });
-                    if (res.ok) {
-                        const row = await res.json();
-                        if (row && row.id) {
-                            bid = row.id;
-                            nextParams.set("bid", bid);
+            const skipPersist = Boolean(options.skipPersist);
+            if (!skipPersist) {
+                try {
+                    if (bid) {
+                        await fetch(`/api/bets/${encodeURIComponent(bid)}`, {
+                            method: "PATCH",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify(body)
+                        });
+                    } else if (shouldCreateNewBet) {
+                        const res = await fetch("/api/bets", {
+                            method: "POST",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify(body)
+                        });
+                        if (res.ok) {
+                            const row = await res.json();
+                            if (row && row.id) {
+                                bid = row.id;
+                                nextParams.set("bid", bid);
+                            }
                         }
                     }
+                } catch (_) {
+                    // Offline or API error — still navigate with URL-only state.
                 }
-            } catch (_) {
-                // Offline or API error — still navigate with URL-only state.
             }
             const next = new URL(window.location.href);
             next.search = nextParams.toString();
@@ -2553,7 +2627,7 @@
         function buildShareHandoffSummaryRows(role) {
             const rows = [];
             if (role === "creator") {
-                rows.push(["You", creatorName || "—"]);
+                rows.push(["Your Name", creatorName || "—"]);
                 rows.push(["Prediction", title || "—"]);
                 rows.push(["Deadline", deadline ? new Date(deadline).toLocaleString() : "—"]);
                 if (trashTalk) {
@@ -2561,10 +2635,10 @@
                 }
             } else {
                 rows.push(["The Bet", title || "—"]);
-                rows.push(["Your position", p2 || "—"]);
+                rows.push(["Your Name", challengerName || "—"]);
+                rows.push(["Your Position", p2 || "—"]);
                 rows.push(["Trash talk", challengerTrashTalk || "—"]);
-                rows.push(["Your name", challengerName || "—"]);
-                rows.push(["Bet ends", deadline ? formatBetEndsLineDate(deadline) : "—"]);
+                rows.push(["Bet Ends", deadline ? formatBetEndsLineDate(deadline) : "—"]);
             }
             return rows
                 .map(
@@ -3201,6 +3275,18 @@
             }
 
             if (bid) {
+                void (async () => {
+                    try {
+                        const res = await fetch(`/api/bets/${encodeURIComponent(bid)}`);
+                        if (!res.ok) {
+                            return;
+                        }
+                        const row = await res.json();
+                        redirectToSettleFromApiRow(row);
+                    } catch (_) {
+                        // Interval sync will retry.
+                    }
+                })();
                 activeStateSyncTimer = setInterval(async () => {
                     try {
                         const res = await fetch(`/api/bets/${encodeURIComponent(bid)}`);
@@ -3212,7 +3298,12 @@
                         const nextParams = new URLSearchParams(currentParams.toString());
                         applyApiBetRowToParams(row, nextParams);
                         preserveViewerTrackParams(nextParams, currentParams);
+                        preserveChallengerDraftFromLocalParams(currentParams, nextParams);
+                        canonicalizeSettledParamsFromApiRow(row, nextParams);
                         nextParams.set("bid", bid);
+                        if (redirectToSettleFromApiRow(row)) {
+                            return;
+                        }
                         const hasRemoteAcceptedPosition = Boolean(nextParams.get("p2"));
                         const isNewAcceptedPosition = hasRemoteAcceptedPosition && !p2;
                         const isNewEarlyVote = (nextParams.get("ev") || "") === "1" && earlyVote !== "1";
@@ -3428,15 +3519,19 @@
                     has_trash_talk: form.get("challengerTrashTalk") ? "yes" : "no"
                 });
                 trackBetsieEvent("betsie_challenger_step", { step: "accept_submitted", source: "form_submit" });
-                void updateUrl("active", {
-                    chn: nextChallengerName,
-                    p2: nextPosition || title,
-                    ct: nextChallengerTrashTalk,
-                    src: "accept",
-                    cr: "",
-                    hf: "",
-                    review: "challenger"
-                });
+                void updateUrl(
+                    "active",
+                    {
+                        chn: nextChallengerName,
+                        p2: nextPosition || title,
+                        ct: nextChallengerTrashTalk,
+                        src: "accept",
+                        cr: "",
+                        hf: "",
+                        review: "challenger"
+                    },
+                    { skipPersist: true }
+                );
             });
             bindChallengerBreadcrumb();
         }
@@ -3797,11 +3892,6 @@
                 // Full navigation + PATCH like other transitions: lands on / with the same bet params as confirm-agree redirect, but Creator track (no src/review).
                 void updateUrl("active", { cs: "gameon", hf: "", src: "", review: "" });
             });
-            challengeAcceptedModal.addEventListener("click", (event) => {
-                if (event.target === challengeAcceptedModal) {
-                    closeChallengeAcceptedModal();
-                }
-            });
             document.getElementById("early-call-notify-vote").addEventListener("click", () => {
                 trackBetsieEvent("betsie_modal", { modal_id: "early_call_notify", action: "vote_now" });
                 closeEarlyCallNotifyModal();
@@ -3827,7 +3917,7 @@
                     closeEarlyEndModal();
                 }
                 if (event.key === "Escape" && !challengeAcceptedModal.classList.contains("is-hidden")) {
-                    closeChallengeAcceptedModal();
+                    event.preventDefault();
                 }
                 if (event.key === "Escape" && !voteConfirmModal.classList.contains("is-hidden")) {
                     closeVoteConfirmModal();
