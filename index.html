@@ -1322,6 +1322,15 @@
             </div>
         </div>
     </div>
+    <div id="challenge-accepted-modal" class="modal-overlay is-hidden" role="dialog" aria-modal="true" aria-labelledby="challenge-accepted-title">
+        <div class="modal-card">
+            <h2 id="challenge-accepted-title" class="modal-title">Challenge Accepted</h2>
+            <p class="modal-text">Your challenger locked in their position. Time to go to Game On.</p>
+            <div class="modal-actions">
+                <button id="challenge-accepted-confirm" class="cta" type="button">Game On</button>
+            </div>
+        </div>
+    </div>
     <div id="celebration-modal" class="celebration-overlay is-hidden" role="dialog" aria-modal="true" aria-labelledby="celebration-title">
         <div class="celebration-card">
             <img
@@ -1350,6 +1359,7 @@
         const freshModal = document.getElementById("fresh-modal");
         const shareHandoffModal = document.getElementById("share-handoff-modal");
         const earlyEndModal = document.getElementById("early-end-modal");
+        const challengeAcceptedModal = document.getElementById("challenge-accepted-modal");
         const celebrationModal = document.getElementById("celebration-modal");
         const shareHandoffState = { role: null, url: "" };
         let settleShareUrlForModal = "";
@@ -2095,6 +2105,18 @@
             earlyEndModal.classList.add("is-hidden");
         }
 
+        function openChallengeAcceptedModal() {
+            challengeAcceptedModal.classList.remove("is-hidden");
+            const gameOnButton = document.getElementById("challenge-accepted-confirm");
+            if (gameOnButton) {
+                gameOnButton.focus();
+            }
+        }
+
+        function closeChallengeAcceptedModal() {
+            challengeAcceptedModal.classList.add("is-hidden");
+        }
+
         function closeCelebrationModal() {
             celebrationModal.classList.add("is-hidden");
             triggerWinnerPreviewFlip();
@@ -2810,6 +2832,11 @@
                                 nextLoc.hash = "";
                                 history.replaceState({}, "", nextLoc.toString());
                             }
+                            if (isNewAcceptedPosition && isCreatorView && flowStep === "invite") {
+                                trackBetsieEvent("betsie_modal", { modal_id: "challenge_accepted", action: "auto_open" });
+                                openChallengeAcceptedModal();
+                                return;
+                            }
                             renderActive();
                         }
                     } catch (_) {
@@ -3227,6 +3254,16 @@
                     closeEarlyEndModal();
                 }
             });
+            document.getElementById("challenge-accepted-confirm").addEventListener("click", () => {
+                trackBetsieEvent("betsie_modal", { modal_id: "challenge_accepted", action: "confirm_game_on" });
+                closeChallengeAcceptedModal();
+                renderActive();
+            });
+            challengeAcceptedModal.addEventListener("click", (event) => {
+                if (event.target === challengeAcceptedModal) {
+                    closeChallengeAcceptedModal();
+                }
+            });
             document.addEventListener("keydown", (event) => {
                 if (event.key === "Escape" && !calendarModal.classList.contains("is-hidden")) {
                     closeCalendarModal();
@@ -3239,6 +3276,9 @@
                 }
                 if (event.key === "Escape" && !earlyEndModal.classList.contains("is-hidden")) {
                     closeEarlyEndModal();
+                }
+                if (event.key === "Escape" && !challengeAcceptedModal.classList.contains("is-hidden")) {
+                    closeChallengeAcceptedModal();
                 }
                 if (event.key === "Escape" && !celebrationModal.classList.contains("is-hidden")) {
                     trackBetsieEvent("betsie_settle_celebration", { action: "escape_blocked" });
