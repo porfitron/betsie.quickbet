@@ -20,6 +20,8 @@ const PATCH_KEYS = [
   "ev",
   "ee",
   "eab",
+  "cv",
+  "chv",
 ];
 
 const COL = {
@@ -41,6 +43,8 @@ const COL = {
   ev: "early_vote",
   ee: "early_ended_at",
   eab: "early_called_by",
+  cv: "creator_vote_choice",
+  chv: "challenger_vote_choice",
 };
 
 function rowToApi(row) {
@@ -69,6 +73,8 @@ function rowToApi(row) {
     ev: row.early_vote ?? "",
     ee: row.early_ended_at ?? "",
     eab: row.early_called_by ?? "",
+    cv: row.creator_vote_choice ?? "",
+    chv: row.challenger_vote_choice ?? "",
   };
 }
 

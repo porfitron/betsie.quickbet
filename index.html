@@ -1663,6 +1663,23 @@
             }
         }
 
+        async function persistViewerVoteChoice(choice) {
+            const bid = currentBidFromLocation();
+            if (!bid) {
+                return;
+            }
+            const key = isCreatorView ? "cv" : "chv";
+            try {
+                await fetch(`/api/bets/${encodeURIComponent(bid)}`, {
+                    method: "PATCH",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ [key]: choice })
+                });
+            } catch (_) {
+                // Ignore network errors; settle flow should continue with URL state.
+            }
+        }
+
         function trackBetsieEvent(name, params) {
             if (typeof gtag === "function") {
                 gtag("event", name, params || {});
@@ -2768,16 +2785,19 @@
             }
             document.getElementById("creator-won").addEventListener("click", () => {
                 trackBetsieEvent("betsie_vote", { choice: "creator", phase: "after_deadline" });
+                void persistViewerVoteChoice("creator");
                 void updateUrl("settle", { w: "1" });
             });
             document.getElementById("challenger-won").addEventListener("click", () => {
                 trackBetsieEvent("betsie_vote", { choice: "challenger", phase: "after_deadline" });
+                void persistViewerVoteChoice("challenger");
                 void updateUrl("settle", { w: "2" });
             });
             const noContestLink = document.getElementById("no-contest-link");
             if (noContestLink) {
                 noContestLink.addEventListener("click", () => {
                     trackBetsieEvent("betsie_vote", { choice: "no_contest", phase: "after_deadline" });
+                    void persistViewerVoteChoice("no_contest");
                     void updateUrl("settle", { w: "0" });
                 });
             }
