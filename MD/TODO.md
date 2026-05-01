@@ -1,26 +1,24 @@
 # Implementation Roadmap: Betsie Lite
 
 ## Phase 1: Core Architecture 🏗️
-- [ ] Create `index.html` structure with views for: Creator, Challenger, and Active Bet.
-- [ ] Implement `app.js` to parse URL query parameters on load.
-- [ ] Create a utility to generate new URLs based on form inputs.
-- [ ] Define a canonical "head unit" information architecture: Compose, Review, Share, Accept, Settle.
+- [ ] Finalize Cloudflare Worker environment configuration (local, preview, production).
+- [ ] Define and apply initial database migrations for bets, players, actions, votes, settlements, and notifications.
+- [ ] Add API contracts for role-track progression endpoints (Creator and Challenger).
+- [ ] Define canonical state machine for `draft -> invited -> active -> voting -> settled`.
 
 ## Phase 2: The Bet Experience ⏱️
-- [ ] Build the "Create Bet" form (Title, Deadline Picker, Position).
-- [ ] Build the "Active Bet" dashboard with the Countdown Timer logic.
-- [ ] Implement "Add to Calendar" functionality.
-- [ ] Add the "Share" API integration to trigger native mobile sharing sheets.
-- [ ] Add channel-aware default share copy variants for iMessage, SMS, and WhatsApp tones/length.
-- [ ] Implement re-open handling so links restore user context clearly after returning from chat.
-- [ ] Enforce chat-first field character limits (name 20, claim 70, trash talk 45).
-- [ ] Add creator invite message composition logic: claim + optional hook + URL.
-- [ ] Add live character counters on share-critical fields.
+- [ ] Enforce split gameplay tracks with role-specific navigation and guards.
+- [ ] Implement push-to-modal opponent-action notifications.
+- [ ] Ensure modal CTA and dismissal paths route users to correct next action.
+- [ ] Build active bet countdown and reminder/calendar paths.
+- [ ] Preserve channel-aware sharing variants for iMessage, SMS, and WhatsApp.
+- [ ] Enforce chat-first limits (name 20, claim 70, trash talk 45) and character counters.
 
 ## Phase 3: Results & Fanfare 🎊
-- [ ] Create a "Deadline Expired" state logic.
-- [ ] Add a basic confetti animation (using a lightweight JS library or CSS particles).
-- [ ] Implement the "Declare Winner" UI for the settlement phase.
+- [ ] Implement vote persistence endpoint with idempotent write behavior.
+- [ ] Add vote synchronization gate that waits for all required player votes.
+- [ ] Implement server-side settlement computation and one-time outcome write.
+- [ ] Add "waiting for opponent vote" UI state and final result reveal transition.
 - [ ] Ensure settlement copy is concise and easy to repost into existing threads.
 
 ## Phase 4: PWA & Polish ✨
@@ -28,4 +26,10 @@
 - [ ] Register a simple Service Worker for offline caching of assets.
 - [ ] Style the "Upsell" components for the iOS app.
 - [ ] Final CSS pass for responsive mobile layouts and "app-like" feel.
-- [ ] Run UX/content audit specifically against the "backend-less chat head unit" positioning.
+- [ ] Run UX/content audit against role-track clarity, modal readability, and voting wait-state comprehension.
+
+## Phase 5: Observability and Analytics 📈
+- [ ] Emit events with canonical identifiers (`bet_id`, `role_track`, `outcome`).
+- [ ] Instrument modal notification lifecycle (`shown`, `cta_click`, `dismissed`).
+- [ ] Instrument vote lifecycle (`submitted`, `waiting`, `all_submitted`, `result_revealed`).
+- [ ] Add smoke tests for Creator and Challenger full lifecycle in staging.

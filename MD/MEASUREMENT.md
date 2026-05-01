@@ -1,11 +1,11 @@
 # Measurement strategy (GA4)
 
-This document describes how Betsie Lite is instrumented for [Google Analytics 4](https://support.google.com/analytics) and how to define **funnels, users, and key milestones** in the GA4 UI. Implementation lives in `index.html` (see `trackBetsieEvent` and the Google tag with measurement ID `G-3X6CJW5LPY`).
+This document describes how Betsie Lite is instrumented for [Google Analytics 4](https://support.google.com/analytics) and how to define **funnels, users, and key milestones** in the GA4 UI. Bets are now database-backed and served via Cloudflare Workers, so event parameters should reference persisted identifiers and role-track state instead of URL-only assumptions.
 
 ## Design constraints
 
-- **No accounts:** the Lite experience is URL-based and anonymous. GA4 identifies **browsers / devices** (client ID), not named people.
-- **Creator vs challenger** is not a stored profile. Infer **role** from **which events** a user fired (e.g. submitted create vs accept, or which **surface** they loaded).
+- **Light-account model:** users may still be pseudonymous, but gameplay state is persisted server-side.
+- **Role tracks are explicit:** Creator and Challenger are persisted roles; analytics should include `role_track` where available.
 - **Milestone definitions are yours to pick:** the product emits **granular events**; a few milestones are **derived** from more than one event to avoid a mismatch with product language (“completed,” “share,” etc.).
 
 ## How events are sent
@@ -18,10 +18,14 @@ All custom events go through a single helper that wraps `gtag("event", name, par
 
 | Event | Purpose |
 |--------|---------|
-| `betsie_surface_view` | Fires on each load. Params include `surface` (`landing`, `create`, `accept`, `active`, `settle`, …), `url_mode`, `has_winner`, and flags that mirror URL state. Use for “which screen was seen” and high-level funnels. |
+| `betsie_surface_view` | Fires on each load. Params include `surface` (`landing`, `create`, `accept`, `active`, `settle`, ...), `role_track`, `bet_id`, and lifecycle flags from backend state. Use for “which screen was seen” and high-level funnels. |
 | `betsie_cta` | Primary CTAs, e.g. `cta_id`: `start_first_bet` (from landing), `start_new_bet` (from settle). `location` disambiguates. |
-| `betsie_form_submit` | `form_id`: `create_bet` (creator finished create step), `accept_bet` (challenger submitted). Additional params: `has_trash_talk`, `position_mode` (accept), etc. |
-| `betsie_vote` | Voting and related actions. For **deadline / voting UI**, `phase` includes `after_deadline`; `choice` includes `creator`, `challenger`, `no_contest` (plus call-early/countdown actions such as `call_early_prompt` and `call_early_confirm`). |
+| `betsie_form_submit` | `form_id`: `create_bet` (creator finished create step), `accept_bet` (challenger submitted). Include `bet_id`, `player_id` (or anonymous surrogate), `role_track`, `has_trash_talk`, and `position_mode` where applicable. |
+| `betsie_vote` | Vote submission and voting actions. Include `bet_id`, `player_id`, `role_track`, `phase`, and `choice` (`creator`, `challenger`, `no_contest`). |
+| `betsie_vote_waiting` | Emitted after a player vote is accepted but result is blocked until all required votes are present. |
+| `betsie_vote_all_submitted` | Emitted when the final required vote is received and result computation becomes eligible. |
+| `betsie_result_revealed` | Emitted when computed outcome is presented to players. Include `bet_id` and `outcome`. |
+| `betsie_modal_notification` | Opponent-action modal lifecycle (`shown`, `cta_click`, `dismissed`) with `bet_id`, `role_track`, and `source_action_type`. |
 | `betsie_settle_pick` | Winner picked from the **settle** view when the outcome is chosen there (less common than voting from `active`). |
 | `betsie_settle_celebration` | Settle outcome celebration modal (e.g. `action` `auto_open`). Supplementary, not a unique “per bet” signal by itself. |
 | `betsie_share` | A share **completed** via `navigator.share` or fallback **clipboard** copy. `share_method`: `native` or `clipboard`; `share_context` when provided. |
@@ -63,18 +67,16 @@ Pick **one** as the official “started” metric. Do not sum A and B for a sing
 - **Count:** `betsie_form_submit` with `form_id` = `create_bet`.
 - **Interpretation:** creator has submitted the create form and the bet state advances in the URL. This is the clearest **“bet exists in the flow”** event.
 
-### Bet “completed” (outcome chosen)
+### Bet “completed” (outcome chosen and revealed)
 
 | Path | Event(s) |
 |------|----------|
-| **Primary** | `betsie_vote` with `phase` = `after_deadline` and `choice` in { `creator`, `challenger`, `no_contest` } |
-| **Alternate** | `betsie_settle_pick` when the result is set from the settle screen before `w` is in the URL (edge case) |
+| **Primary** | `betsie_result_revealed` |
+| **Supporting gate checks** | `betsie_vote_waiting` and `betsie_vote_all_submitted` |
 
-Interpretation for same-position bets:
-- `choice = creator` may represent **both right**.
-- `choice = challenger` may represent **both wrong**.
+Interpretation for same-position bets should come from the final `outcome` value on `betsie_result_revealed` (for example, `both_right` or `both_wrong`) rather than inferring from raw vote choices alone.
 
-**Avoid** using only `betsie_surface_view` on settle with a winner, or `betsie_settle_celebration`, as the sole “completion” metric: reloads and revisits can **inflate** counts. Prefer the vote / settle_pick events for **“outcome was recorded (once)”.**
+**Avoid** using only `betsie_surface_view` settle visits or celebration events as sole completion metrics, since revisits can inflate counts.
 
 ### Share button usage
 
@@ -89,17 +91,20 @@ If you want receipt-specific sharing, filter `betsie_share_intent` by `share_con
 ## GA4 admin checklist
 
 1. **Property:** confirm traffic appears under measurement ID `G-3X6CJW5LPY`.
-2. **Custom dimensions (event-scoped):** in **Admin → Data display → Custom definitions**, register parameters you filter on often, e.g. `surface`, `form_id`, `cta_id`, `location`, `phase`, `choice`, `share_method`, `share_context`, `flow`, `action`, `role`. New definitions apply **going forward**; allow **24–48 hours** for stable reporting.
+2. **Custom dimensions (event-scoped):** in **Admin → Data display → Custom definitions**, register parameters you filter on often, e.g. `bet_id`, `player_id` (or anonymous surrogate), `role_track`, `surface`, `form_id`, `cta_id`, `location`, `phase`, `choice`, `outcome`, `share_method`, `share_context`, `flow`, `action`, `source_action_type`. New definitions apply **going forward**; allow **24–48 hours** for stable reporting.
 3. **Key events (optional):** mark milestones like `betsie_form_submit` and `betsie_share` if the team wants them in standard conversion-style reports.
 4. **Explorations:** use **Funnel** or **Free form** with the definitions above; **Real-time** helps validate right after a code deploy.
 
 ## Gaps and optional product follow-ups
 
-- There is **no** single `betsie_bet_completed` (or similar) name; **completions** are derived. If the team wants one line per “bet settled” in GA4 with no ambiguity, add a dedicated event at the point the winning URL (or `w=`) is committed, and document it here.
-- “Started” is split between **`betsie_cta` and `betsie_surface_view`:** align the org on A vs B to avoid double-counting in the same report.
+- Ensure all voting implementations emit explicit waiting and completion gate events so settlement timing is auditable.
+- Ensure modal notification lifecycle is consistently instrumented for both role tracks.
+- “Started” may still be split between **`betsie_cta` and `betsie_surface_view`**; align definitions to avoid double-counting.
 
 ## Related
 
 - `MD/README.md` — product and technical context for Betsie Lite
 - `MD/PRD.md` — product requirements
 - `MD/DESIGN.md` — visual design
+- `MD/SERVER_SETUP.md` — Cloudflare Worker setup and operations
+- `MD/DATABASE_SCHEMA.md` — backend data model and constraints

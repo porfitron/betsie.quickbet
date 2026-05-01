@@ -1,20 +1,26 @@
-# Betsie Lite (PWA)
+# Betsie Lite (PWA + Worker Backend)
 
-Betsie Lite is a lightweight, backend-less head unit for the messaging app people already use, whether that is iMessage, SMS, or WhatsApp. It helps users compose, share, and settle quick 1-on-1 bets through URL-based state management, without creating an account.
+Betsie Lite is a lightweight chat-native betting experience that now runs on a database-backed architecture deployed on Cloudflare Workers. It helps users compose, share, and settle quick 1-on-1 bets between a Creator and Challenger without forcing account-heavy onboarding.
 
 ## Technical Philosophy
-- **Backend-less by Design:** Bet data is stored in URL query parameters; no backend database or user accounts for the Lite experience.
-- **Chat-Native Head Unit:** The web app is the control panel, while the user's preferred chat app is the transport and context layer.
-- **PWA First:** Built with vanilla HTML, CSS, and JS, installable to the home screen with offline-ready properties.
-- **Share Loop:** Optimize the implemented loop: `Create -> Confirm -> Invite -> Accept -> Confirm -> Game On -> Vote/Settle -> Share result`.
-- **Stage-First UX:** Preserve visible breadcrumb labels exactly as implemented (`Create/Confirm/Invite` for Creator and `Accept/Confirm/Game On` for Challenger).
+- **Database-Driven Core:** Bet state is persisted in the backend database, not URL query parameters.
+- **Cloudflare Worker Runtime:** Server logic is deployed on Cloudflare Workers for API handling, orchestration, and real-time gameplay transitions.
+- **Chat-Native Head Unit:** The web app remains the control panel; iMessage, SMS, and WhatsApp remain the social transport layer.
+- **PWA First:** Built for mobile, installable, and optimized for quick in-and-out usage from chat.
+- **Split Gameplay Tracks:** Creator and Challenger move through separate but synchronized stages.
+- **Action-Aware UX:** Opponent actions trigger push-to-modal notifications to keep both players synchronized.
+- **Consensus Settlement:** Voting waits for all required players before result calculation and reveal.
 
 ## Docs
-
-- **[MEASUREMENT.md](MEASUREMENT.md)** — GA4 events, milestone definitions, and how to build segments and funnels in Google Analytics 4.
+- **[PRD.md](PRD.md)** — product requirements and end-to-end user journeys.
+- **[DESIGN.md](DESIGN.md)** — visual, interaction, and language system.
+- **[MEASUREMENT.md](MEASUREMENT.md)** — GA4 events, milestones, and reporting patterns.
+- **[SERVER_SETUP.md](SERVER_SETUP.md)** — Cloudflare Worker setup, environments, deployment, and operations.
+- **[DATABASE_SCHEMA.md](DATABASE_SCHEMA.md)** — canonical data model, constraints, indexes, and lifecycle rules.
+- **[TODO.md](TODO.md)** — implementation roadmap and follow-up work.
 
 ## Tech Stack
-- HTML5 / CSS3 (Modern Flexbox/Grid)
-- Vanilla JavaScript (ES6+)
-- Web Manifest & Service Workers for PWA functionality
-- Lucide-style SVG icons for a native feel
+- Frontend: HTML5, CSS3, Vanilla JavaScript (ES6+)
+- Runtime: Cloudflare Workers
+- Storage: Database-backed bet and vote lifecycle
+- PWA: Web Manifest + Service Worker

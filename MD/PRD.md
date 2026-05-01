@@ -1,80 +1,89 @@
 # Product Requirements: Betsie Lite
 
 ## 1. Goal
-Position Betsie Lite as a backend-less head unit for a user's preferred chat platform (iMessage, SMS, or WhatsApp), providing a friction-free way to create and settle 1-on-1 social bets through a single link. Encourage users to upgrade to the full iOS app for persistent history and global leaderboards.
+Position Betsie Lite as a chat-first control surface for creating and settling 1-on-1 social bets with low friction, while using a database-backed Cloudflare Worker architecture for reliable state, synchronization, and settlement integrity.
 
 ## 2. Product Positioning
-- **What Betsie Lite is:** A share-first, no-account, no-backend control surface for social bets.
-- **What chat apps do:** Handle identity, delivery, thread context, notifications, and re-engagement.
-- **What Betsie Lite does:** Handle bet composition, link state, challenge acceptance, countdown, and settlement UI.
-- **What this means for UX:** Every screen should optimize for "send this into chat now" and "re-open from chat later."
+- **What Betsie Lite is:** A share-first, no-heavy-onboarding betting experience with durable backend state.
+- **What chat apps do:** Handle delivery, thread context, and natural re-engagement.
+- **What Betsie Lite does:** Handle composition, role-track progression, action synchronization, and settlement logic.
+- **What this means for UX:** Every screen should optimize for "take action now, return from chat later, and always recover exact state."
 
 ## 3. Core User Flows
-### Flow A: The Creator
-1. User opens the PWA.
-2. User enters: Creator Name, Bet (claim), End Date, and optional Creator Trash Talk.
-3. App generates a "Challenge Link" (e.g., `betsie.app/?t=Marathon+Goal&p1=Yes&d=2026-05-01`).
-4. Creator follows staged flow labels: **Create -> Confirm -> Invite**.
-5. App presents channel-aware share copy that works in iMessage, SMS, or WhatsApp.
+### Flow A: Creator Track
+1. User opens the PWA and starts a new bet.
+2. User enters Creator Name, Claim, End Date, and optional Trash Talk.
+3. App persists a new bet record and creates a shareable invite link referencing backend state.
+4. Creator follows staged labels: **Create -> Confirm -> Invite**.
+5. App presents channel-aware share copy for iMessage, SMS, or WhatsApp.
 6. Primary creator CTAs move from **Next** to **Invite challenger** (or **Send a reminder** after first invite).
-7. User shares the link into an existing chat thread.
+7. Creator sends invite into chat.
 
-### Flow B: The Challenger
-1. Friend opens the link.
-2. Challenger follows staged flow labels: **Accept -> Confirm -> Game On**.
-3. Friend sees the bet details and chooses either **Agree with {Creator}** or **Make a different call**.
-4. Friend enters Challenger Name, Challenger Position (if custom), and optional Challenger Trash Talk.
-5. The URL updates to include the Challenger's state (e.g., `&p2=No` or a custom challenger stance).
-6. Primary challenger CTA moves from **Next** to **Confirm and send**, then optionally **Re-share the link to this bet**.
-7. Friend shares the updated link back into chat with one tap.
+### Flow B: Challenger Track
+1. Challenger opens invite link from chat.
+2. App loads the existing bet state and routes user to challenger-specific flow.
+3. Challenger follows staged labels: **Accept -> Confirm -> Game On**.
+4. Challenger chooses either **Agree with {Creator}** or **Make a different call**.
+5. Challenger enters name and optional trash talk, then confirms.
+6. App persists challenger participation and updates bet readiness state.
+7. Challenger can re-share the active link to continue the social thread.
 
-### Flow C: Bet Active and Reminder
-1. When the Creator opens the returned link, both positions are locked and the bet is officially "on."
-2. App shows a live countdown timer to the End Date.
-3. Either player can add the bet to their calendar for reminder coverage.
+### Flow C: Opponent Action Notification (Push-to-Modal)
+1. When one player performs a meaningful action (accept, confirm, vote, etc.), backend state changes and emits a track-relevant notification.
+2. The other player receives an in-app modal on next app focus/open (or live when available) indicating the opponent's action.
+3. Modal copy clarifies what changed and what action is now expected from the current user.
+4. Dismissal and CTA behavior should move users directly to the correct next step in their own track.
 
-### Flow D: Settlement and Receipt
-1. At End Date (or if called early), either player enters settlement mode.
-2. Result is selected via vote outcome:
-   - **{Creator} Won!** (or **Both Right!** when both chose the same position)
-   - **{Challenger} Won!** (or **Both Wrong!** when both chose the same position)
-   - **No contest** via "If no one was right, click here."
-3. App generates a shareable online receipt with bet details and outcome.
-4. Receipt stage uses **Share result** as the primary outbound CTA.
-5. Players share receipt back into chat and may optionally post to social media.
+### Flow D: Active Bet and Reminder
+1. Once both players have completed required onboarding actions, bet state moves to active.
+2. App shows countdown to End Date and optional reminder/calendar controls.
+3. Both players can re-open at any time and see role-aware state in their own track.
+
+### Flow E: Settlement, Voting, and Result Reveal
+1. At End Date (or if called early), voting opens for required players.
+2. A submitted vote is persisted immediately, but the final result is not computed or shown until all required votes are received.
+3. While waiting, users see a clear "waiting for opponent vote" state.
+4. When all votes are present, server-side logic computes final outcome and writes settlement record.
+5. App reveals synchronized outcome and receipt:
+   - **{Creator} Won!** / **Both Right!**
+   - **{Challenger} Won!** / **Both Wrong!**
+   - **No contest**
+6. Receipt stage uses **Share result** as the primary outbound CTA.
 
 ## 4. Key Features
-- **URL-Encoded State:** All bet details (title, positions, dates) are parsed from and written to the URL.
-- **Channel-Aware Share Copy:** Prebuilt, concise share text that reads naturally in iMessage, SMS, and WhatsApp.
-- **Re-open Resilience:** Opening the same link later should restore context with no confusion and no required login.
-- **Two-Step Challenge Handshake:** Creator sends invite link, Challenger returns accepted/customized link, then bet becomes active.
-- **Countdown Clock:** A real-time visual timer showing hours/minutes/seconds until the bet deadline once both sides have joined.
-- **Add to Calendar:** A button to generate an .ics file or Google Calendar link for the bet deadline.
-- **Early Call Option:** Either player can call the bet early and move directly into settlement mode.
-- **Outcome Voting:** Settlement supports Creator right, Challenger right, Both right, Both wrong, or No contest.
-- **Online Receipt:** Settlement generates a shareable receipt page for chat sharing and optional social posting.
-- **Results Page:** After deadline or early call, the UI transitions to a settlement flow and receipt state.
-- **Implemented Stage Labels:** Creator uses Create/Confirm/Invite; Challenger uses Accept/Confirm/Game On.
-- **iOS Upsell:** Persistent banners and "locked" features (History, Profile, Win/Loss Record) that link to the App Store.
+- **Database-Backed Bet State:** Canonical source of truth for bets, players, actions, votes, and outcomes.
+- **Role-Split Tracks:** Creator and Challenger progression are intentionally separate and role-aware.
+- **Track Synchronization:** Backend transitions and guards prevent impossible states and cross-track drift.
+- **Push-to-Modal Notifications:** Opponent actions trigger modal notifications so each player knows when to act.
+- **Vote Synchronization Gate:** Result calculation is blocked until all required votes are submitted.
+- **Deterministic Settlement:** Final outcome is calculated server-side and persisted once.
+- **Channel-Aware Share Copy:** Outbound messages remain concise and chat-native.
+- **Countdown + Calendar:** Active bets support timing awareness and reminders.
+- **Online Receipt:** Settlement produces a shareable receipt state for chat and social reposting.
 
-## 5. UI/UX Requirements
-- **Mobile-First:** Styled to look like a native iOS/Android app.
-- **The "Vibe":** Energetic, social, and clean. Use high-contrast buttons and playful typography.
-- **Head-Unit Mental Model:** The app should feel like a quick control panel, not a destination social feed.
-- **Fast-to-Share:** Primary CTA on all pre-settlement screens should be sharing back into chat.
-- **Cross-Channel Clarity:** Copy must avoid platform-specific jargon and still feel native in iMessage/SMS/WhatsApp contexts.
-- **Public Visibility:** Bets are public by URL design; no "Discover" feed helps preserve pseudo-privacy.
+## 5. Technical and Product Requirements
+- **Runtime:** Cloudflare Workers host APIs and state orchestration.
+- **Data Integrity:** Critical transitions (acceptance, activation, vote completion, settlement) must be validated server-side.
+- **Idempotency:** Repeated submissions from refresh/retry should not duplicate key actions.
+- **Consistency:** Role track state and modal notifications must be generated from persisted backend events, not inferred client-only assumptions.
+- **Resilience:** Re-opening the app from shared links should restore canonical state accurately.
 
-## 6. Content Guidelines
-- Keep microcopy short enough to survive message previews and link unfurls.
-- Default to implemented action language where possible: "Next", "Invite challenger", "Confirm and send", "Call the bet early", "Share result".
-- Avoid internal product terms (for example, "stateful URL") in user-facing text.
-- When possible, generate share text with a clear challenge + deadline + call-to-action pattern.
-- Reinforce product loop language in onboarding and end states: "Create, Bet, Repeat."
+## 6. UI/UX Requirements
+- **Mobile-First:** Feels native on iOS/Android form factors.
+- **Stage-First UX:** Preserve labels exactly as implemented per role track.
+- **Action Clarity:** Modals must state "what opponent did" and "what you do next."
+- **Waiting UX:** Vote pending state should reduce ambiguity and prevent premature result reveal.
+- **Fast-to-Share:** Primary CTA on pre-settlement screens remains sharing back to chat.
 
-## 7. Messaging Constraints (Chat-First)
-- **Creator invite share format:** `creator claim` + optional `trash talk hook` + link.
-- **Default hook when blank:** "Prove me wrong."
+## 7. Content Guidelines
+- Keep microcopy concise and socially readable in chat threads.
+- Preserve implemented CTA language where possible.
+- Avoid exposing internal architecture terms in user-facing copy.
+- Reinforce loop language: "Create, Bet, Repeat."
+
+## 8. Messaging Constraints (Chat-First)
+- **Creator invite format:** `claim` + optional `trash talk hook` + link.
+- **Default hook:** "Prove me wrong."
 - **Do not expose "YES/NO" language in outbound creator invite text.**
 - **Character limits (hard):**
   - Creator name: 20
@@ -82,4 +91,4 @@ Position Betsie Lite as a backend-less head unit for a user's preferred chat pla
   - Claim/position text: 70
   - Trash talk (creator/challenger): 45
   - Challenger custom position text: 70
-- **Share copy budget target:** Keep pre-link message text concise (generally <=160 chars) for readability in iMessage/SMS/WhatsApp threads.
+- **Share copy target:** Keep pre-link text generally <=160 chars for readability.

@@ -81,6 +81,25 @@ The typography uses humanist sans-serif typefaces to balance readability with a 
 - **No contest path:** secondary inline action copy: "If no one was right, click here."
 - **Receipt language:** use "Bet Receipt" heading and "Share result" as primary settlement CTA.
 
+## 10. Role-Track and Sync UX
+- Keep Creator and Challenger interfaces distinct; users should never wonder which track they are on.
+- Show role-aware headers or badges to reinforce context at each step.
+- Use progress markers that only show steps relevant to the current role.
+
+## 11. Opponent Action Modal UX
+- Use push-to-modal notifications to communicate opponent actions that unblock the next user step.
+- Modal content pattern:
+  - Line 1: what happened (for example, "Alex accepted your bet.")
+  - Line 2: what to do next (for example, "Open Game On to continue.")
+- Keep one primary CTA and optional dismiss; dismiss should not hide required actions from the main screen.
+- Modal tone should be informative and momentum-focused, never punitive.
+
+## 12. Voting Wait-State UX
+- After a user votes, transition to a clear pending state: "Waiting for opponent vote."
+- Do not reveal winner, celebration, or receipt until all required votes are received.
+- Use subtle status indicators (timer, spinner, or state chip) to reduce uncertainty.
+- When final vote arrives, transition directly to synchronized outcome reveal and receipt state.
+
 ## 9. Input Limits and Composition
 - Enforce strict field lengths to protect message readability in chat apps:
   - Name fields: `20`
