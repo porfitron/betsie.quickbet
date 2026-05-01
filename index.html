@@ -2985,16 +2985,13 @@
                 const role = shareHandoffState.role;
                 const handoffUrl = shareHandoffState.url;
                 trackBetsieEvent("betsie_share_handoff", { action: "primary_share", role });
-                let shared = false;
                 try {
                     await shareCurrentLink(handoffUrl, { share_context: role === "creator" ? "creator_handoff" : "challenger_handoff" });
-                    shared = true;
+                } catch (_) {
+                    // Even if native share is cancelled/fails, continue to the next step.
                 } finally {
                     closeShareHandoffModal();
                     removeHandoffFlashFromAddressBar();
-                }
-                if (!shared) {
-                    return;
                 }
                 if (role === "creator") {
                     await updateUrl("active", { inv: "1", cs: "invite", hf: "" });
