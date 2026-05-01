@@ -3360,6 +3360,17 @@
                     closeChallengeAcceptedModal();
                 }
             });
+            document.getElementById("early-call-notify-vote").addEventListener("click", () => {
+                trackBetsieEvent("betsie_modal", { modal_id: "early_call_notify", action: "vote_now" });
+                closeEarlyCallNotifyModal();
+                renderActive();
+            });
+            earlyCallNotifyModal.addEventListener("click", (event) => {
+                if (event.target === earlyCallNotifyModal) {
+                    closeEarlyCallNotifyModal();
+                    renderActive();
+                }
+            });
             document.addEventListener("keydown", (event) => {
                 if (event.key === "Escape" && !calendarModal.classList.contains("is-hidden")) {
                     closeCalendarModal();
@@ -3375,6 +3386,10 @@
                 }
                 if (event.key === "Escape" && !challengeAcceptedModal.classList.contains("is-hidden")) {
                     closeChallengeAcceptedModal();
+                }
+                if (event.key === "Escape" && !earlyCallNotifyModal.classList.contains("is-hidden")) {
+                    closeEarlyCallNotifyModal();
+                    renderActive();
                 }
                 if (event.key === "Escape" && !celebrationModal.classList.contains("is-hidden")) {
                     trackBetsieEvent("betsie_settle_celebration", { action: "escape_blocked" });
