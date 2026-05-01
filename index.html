@@ -54,7 +54,7 @@
     </script>
     <script>
         if ("serviceWorker" in navigator) {
-            const SW_VERSION = "2026-04-22";
+            const SW_VERSION = "2026-05-01-1";
             window.addEventListener("load", () => {
                 navigator.serviceWorker.register(`/sw.js?v=${SW_VERSION}`, { updateViaCache: "none" })
                     .then((registration) => {
