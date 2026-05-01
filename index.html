@@ -3332,7 +3332,13 @@
             document.getElementById("early-end-confirm").addEventListener("click", () => {
                 trackBetsieEvent("betsie_vote", { choice: "call_early_confirm", phase: "countdown" });
                 closeEarlyEndModal();
-                void updateUrl("active", { ev: "1", ee: new Date().toISOString() });
+                const locParams = getMergedParamsFromLocation();
+                const challengerTrack = (locParams.get("src") || "") === "accept";
+                void updateUrl("active", {
+                    ev: "1",
+                    ee: new Date().toISOString(),
+                    eab: challengerTrack ? "2" : "1"
+                });
             });
             document.getElementById("early-end-cancel").addEventListener("click", () => {
                 trackBetsieEvent("betsie_vote", { choice: "call_early_cancel", phase: "countdown" });
