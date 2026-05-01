@@ -2161,6 +2161,20 @@
             history.replaceState({}, "", next.toString());
         }
 
+        function hasCreatorReviewRequestInAddressBar() {
+            const next = new URL(window.location.href);
+            return next.searchParams.get("review") === "1";
+        }
+
+        function removeCreatorReviewRequestFromAddressBar() {
+            const next = new URL(window.location.href);
+            if (!next.searchParams.has("review")) {
+                return;
+            }
+            next.searchParams.delete("review");
+            history.replaceState({}, "", next.toString());
+        }
+
         function buildShareHandoffSummaryRows(role) {
             const rows = [];
             if (role === "creator") {
@@ -2461,7 +2475,8 @@
                     p2: "",
                     cs: "confirm",
                     inv: "",
-                    hf: "c"
+                    hf: "",
+                    review: "1"
                 });
             });
             bindCreatorBreadcrumb();
@@ -2673,6 +2688,19 @@
             }
 
             const hasDbBackedBet = Boolean(currentBidFromLocation());
+            const shouldAutoCreatorReview =
+                hasCreatorReviewRequestInAddressBar() &&
+                isCreatorView &&
+                !hasChallengerAccepted &&
+                !hasInvitedChallenger &&
+                flowStep === "confirm";
+            if (shouldAutoCreatorReview) {
+                removeCreatorReviewRequestFromAddressBar();
+                requestAnimationFrame(() => {
+                    trackBetsieEvent("betsie_share_handoff", { action: "auto_open", role: "creator" });
+                    openShareHandoffModal("creator", challengeShareUrl, creatorName, challengerName);
+                });
+            }
             const shouldAutoCreatorHandoff =
                 handoffFlash === "c" &&
                 !hasDbBackedBet &&
