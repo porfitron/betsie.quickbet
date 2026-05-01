@@ -927,6 +927,10 @@
             line-height: 1.45;
         }
 
+        .modal-text-center {
+            text-align: center;
+        }
+
         .modal-actions {
             display: grid;
             gap: 8px;
@@ -1135,6 +1139,30 @@
             word-break: break-word;
         }
 
+        .modal-summary-switch {
+            display: inline;
+            border: 0;
+            background: none;
+            padding: 0;
+            margin-left: 6px;
+            font: inherit;
+            font-size: 0.84rem;
+            font-weight: 700;
+            color: var(--betsie-coral);
+            cursor: pointer;
+            text-decoration: underline;
+        }
+
+        .modal-summary-switch:hover {
+            color: #d85a5c;
+        }
+
+        .modal-summary-switch:focus-visible {
+            outline: 2px solid rgba(243, 109, 111, 0.35);
+            outline-offset: 2px;
+            border-radius: 4px;
+        }
+
         .label-row {
             display: flex;
             align-items: baseline;
@@ -1334,10 +1362,10 @@
     <div id="vote-confirm-modal" class="modal-overlay is-hidden" role="dialog" aria-modal="true" aria-labelledby="vote-confirm-title">
         <div class="modal-card">
             <h2 id="vote-confirm-title" class="modal-title modal-title--share-handoff-confirm">Confirm your vote</h2>
-            <p id="vote-confirm-body" class="modal-text">Make sure this is the position you want to lock in.</p>
+            <p id="vote-confirm-body" class="modal-text modal-text-center">Make sure this is the position you want to lock in.</p>
             <div id="vote-confirm-summary" class="modal-summary"></div>
             <div class="modal-actions">
-                <button id="vote-confirm-primary" class="cta" type="button">Confirm vote</button>
+                <button id="vote-confirm-primary" class="cta" type="button">Confirm and send</button>
                 <button id="vote-confirm-cancel" class="ghost" type="button">Cancel</button>
             </div>
         </div>
@@ -1663,6 +1691,40 @@
             }
         }
 
+        function stashVoteConfirmDraftForCurrentBet(choice) {
+            const normalizedChoice = String(choice || "");
+            if (!normalizedChoice || !["creator", "challenger", "no_contest"].includes(normalizedChoice)) {
+                return;
+            }
+            try {
+                const bid = currentBidFromLocation();
+                const key = bid ? `betsieVoteConfirmDraft:${bid}` : "betsieVoteConfirmDraft:fallback";
+                sessionStorage.setItem(key, normalizedChoice);
+            } catch (_) {
+                // Ignore storage issues; switching should still proceed.
+            }
+        }
+
+        function consumeVoteConfirmDraftForCurrentBet() {
+            try {
+                const bid = currentBidFromLocation();
+                const key = bid ? `betsieVoteConfirmDraft:${bid}` : "betsieVoteConfirmDraft:fallback";
+                let draft = sessionStorage.getItem(key) || "";
+                if (!draft && bid) {
+                    draft = sessionStorage.getItem("betsieVoteConfirmDraft:fallback") || "";
+                    if (draft) {
+                        sessionStorage.removeItem("betsieVoteConfirmDraft:fallback");
+                    }
+                }
+                if (draft) {
+                    sessionStorage.removeItem(key);
+                }
+                return ["creator", "challenger", "no_contest"].includes(draft) ? draft : "";
+            } catch (_) {
+                return "";
+            }
+        }
+
         async function clearHandoffFlashForCurrentBet() {
             removeHandoffFlashFromAddressBar();
             const bid = currentBidFromLocation();
@@ -1712,6 +1774,107 @@
                 cs: "gameon",
                 w: ""
             });
+        }
+
+        async function ensureDbBackedBidForShare() {
+            const params = getMergedParamsFromLocation();
+            const existingBid = params.get("bid") || "";
+            if (existingBid) {
+                return existingBid;
+            }
+            const viewerIsCreator = (params.get("src") || "") !== "accept";
+            const canCreateSharedBet =
+                viewerIsCreator &&
+                params.get("mode") === "active" &&
+                Boolean(params.get("t")) &&
+                Boolean(params.get("d")) &&
+                Boolean(params.get("cn"));
+            if (!canCreateSharedBet) {
+                return "";
+            }
+            try {
+                const body = shareableParamsToApiBody(params);
+                const res = await fetch("/api/bets", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify(body)
+                });
+                if (!res.ok) {
+                    return "";
+                }
+                const row = await res.json();
+                const createdBid = row && row.id ? String(row.id) : "";
+                if (!createdBid) {
+                    return "";
+                }
+                const nextLoc = new URL(window.location.href);
+                nextLoc.searchParams.set("bid", createdBid);
+                history.replaceState({}, "", nextLoc.toString());
+                return createdBid;
+            } catch (_) {
+                return "";
+            }
+        }
+
+        function buildChallengeShareUrl() {
+            const shareUrl = new URL(window.location.href);
+            shareUrl.searchParams.set("mode", "accept");
+            shareUrl.searchParams.delete("p2");
+            shareUrl.searchParams.delete("src");
+            shareUrl.searchParams.delete("w");
+            shareUrl.searchParams.delete("cs");
+            shareUrl.searchParams.delete("inv");
+            shareUrl.searchParams.delete("hf");
+            const inviteUrl = new URL(toCompressedHashUrl(shareUrl.toString()));
+            inviteUrl.pathname = "/share/invite/";
+            return inviteUrl.toString();
+        }
+
+        function buildReminderShareUrl() {
+            const reminderUrl = new URL(buildChallengeShareUrl());
+            reminderUrl.pathname = "/share/reminder/";
+            return reminderUrl.toString();
+        }
+
+        function buildConfirmationShareUrl(challengerAgreesWithCreator) {
+            const shareUrl = new URL(window.location.href);
+            shareUrl.searchParams.set("mode", "active");
+            shareUrl.searchParams.set("src", "accept");
+            shareUrl.searchParams.set("cr", "1");
+            shareUrl.searchParams.delete("hf");
+            const confirmUrl = new URL(toCompressedHashUrl(shareUrl.toString()));
+            confirmUrl.pathname = challengerAgreesWithCreator ? "/share/confirm-agree/" : "/share/confirm/";
+            return confirmUrl.toString();
+        }
+
+        function buildOpponentVoteNudgeUrl() {
+            const url = new URL(window.location.href);
+            const params = getMergedParamsFromLocation();
+            const viewerIsCreator = (params.get("src") || "") !== "accept";
+            if (viewerIsCreator) {
+                url.searchParams.set("src", "accept");
+            } else {
+                url.searchParams.delete("src");
+            }
+            url.searchParams.delete("review");
+            url.searchParams.delete("cv");
+            url.searchParams.delete("chv");
+            url.searchParams.delete("w");
+            url.searchParams.delete("hf");
+            return url.toString();
+        }
+
+        async function shareVoteNudgeToOpponent() {
+            const params = getMergedParamsFromLocation();
+            const viewerIsCreator = (params.get("src") || "") !== "accept";
+            const shareContext = viewerIsCreator ? "vote_nudge_creator" : "vote_nudge_challenger";
+            const opponentVoteUrl = buildOpponentVoteNudgeUrl();
+            trackBetsieEvent("betsie_share_intent", { share_context: shareContext });
+            try {
+                await shareCurrentLink(opponentVoteUrl, { share_context: shareContext });
+            } catch (_) {
+                // Vote is already saved; sharing is optional.
+            }
         }
 
         function trackBetsieEvent(name, params) {
@@ -2046,6 +2209,12 @@
                 }
                 return lines.join("\n");
             }
+            if (shareContext === "vote_nudge_creator") {
+                return `I just submitted my vote on our bet.\nYour turn to lock yours in.`;
+            }
+            if (shareContext === "vote_nudge_challenger") {
+                return `I just submitted my vote on our bet.\nTake a look and lock in your vote.`;
+            }
             return "It's happening now, on Betsie Lite.";
         }
 
@@ -2194,6 +2363,15 @@
         function viewerVoteChoiceLabel(choice, role) {
             const creatorLabel = creatorName || "Creator";
             const challengerLabel = challengerName || "Challenger";
+            const samePosition =
+                Boolean(String(p2 || "").trim()) &&
+                String(p2 || "").trim() === String(title || "").trim();
+            if (samePosition && choice === "creator") {
+                return "Both right";
+            }
+            if (samePosition && choice === "challenger") {
+                return "Both wrong";
+            }
             if (choice === "creator") {
                 return `${creatorLabel} won`;
             }
@@ -2207,22 +2385,29 @@
         }
 
         function buildVoteConfirmSummary(role, choice) {
-            const rows = [
-                ["You are", role === "creator" ? (creatorName || "Creator") : (challengerName || "Challenger")],
-                ["Your vote", viewerVoteChoiceLabel(choice, role)],
-                ["Bet", title || "—"]
-            ];
-            return rows
-                .map(
-                    ([k, v]) =>
-                        `<div class="modal-summary-row"><span class="modal-summary-k">${escapeHtml(k)}</span><span class="modal-summary-v">${escapeHtml(v)}</span></div>`
-                )
-                .join("");
+            const viewerName = role === "creator" ? (creatorName || "Creator") : (challengerName || "Challenger");
+            const voteLabel = viewerVoteChoiceLabel(choice, role);
+            const betLabel = title || "—";
+            return [
+                `<div class="modal-summary-row"><span class="modal-summary-k">You are</span><span class="modal-summary-v">${escapeHtml(viewerName)}</span></div>`,
+                `<div class="modal-summary-row"><span class="modal-summary-k">Your vote</span><span class="modal-summary-v">${escapeHtml(voteLabel)}</span></div>`,
+                `<div class="modal-summary-row"><span class="modal-summary-k">Bet</span><span class="modal-summary-v">${escapeHtml(betLabel)}</span></div>`
+            ].join("");
         }
 
         function openVoteConfirmModal(choice, role) {
             voteConfirmState.choice = choice;
             voteConfirmState.role = role;
+            const viewerName = role === "creator" ? (creatorName || "Creator") : (challengerName || "Challenger");
+            const otherName = role === "creator" ? (challengerName || "Challenger") : (creatorName || "Creator");
+            const titleEl = document.getElementById("vote-confirm-title");
+            if (titleEl) {
+                titleEl.textContent = `${viewerName}, confirm your vote!`;
+            }
+            const bodyEl = document.getElementById("vote-confirm-body");
+            if (bodyEl) {
+                bodyEl.innerHTML = `Not ${escapeHtml(viewerName)}? <button type="button" class="modal-summary-edit" id="vote-confirm-switch-link">Switch to ${escapeHtml(otherName)}.</button>`;
+            }
             const summaryEl = document.getElementById("vote-confirm-summary");
             summaryEl.innerHTML = `
                 <div class="modal-summary-header">
@@ -2234,6 +2419,7 @@
             voteConfirmModal.classList.remove("is-hidden");
             const confirmEl = document.getElementById("vote-confirm-primary");
             if (confirmEl) {
+                confirmEl.innerHTML = shareActionLabel("Confirm and send");
                 confirmEl.focus();
             }
         }
@@ -2715,37 +2901,13 @@
             const challengerButtonLabel = shareActionLabel(challengerButtonText);
             const challengerButtonClass = hasChallengerSentConfirmation ? "ghost" : "cta";
             const challengerAgreesWithCreator = hasChallengerAccepted && String(p2).trim() === String(title).trim();
-            const challengeShareUrl = (() => {
-                const shareUrl = new URL(window.location.href);
-                shareUrl.searchParams.set("mode", "accept");
-                shareUrl.searchParams.delete("p2");
-                shareUrl.searchParams.delete("src");
-                shareUrl.searchParams.delete("w");
-                shareUrl.searchParams.delete("cs");
-                shareUrl.searchParams.delete("inv");
-                shareUrl.searchParams.delete("hf");
-                const inviteUrl = new URL(toCompressedHashUrl(shareUrl.toString()));
-                inviteUrl.pathname = "/share/invite/";
-                return inviteUrl.toString();
-            })();
-            const reminderShareUrl = (() => {
-                const reminderUrl = new URL(challengeShareUrl);
-                reminderUrl.pathname = "/share/reminder/";
-                return reminderUrl.toString();
-            })();
-            const confirmationShareUrl = (() => {
-                const shareUrl = new URL(window.location.href);
-                shareUrl.searchParams.set("mode", "active");
-                shareUrl.searchParams.set("src", "accept");
-                shareUrl.searchParams.set("cr", "1");
-                shareUrl.searchParams.delete("hf");
-                const confirmUrl = new URL(toCompressedHashUrl(shareUrl.toString()));
-                confirmUrl.pathname = challengerAgreesWithCreator ? "/share/confirm-agree/" : "/share/confirm/";
-                return confirmUrl.toString();
-            })();
+            const challengeShareUrl = buildChallengeShareUrl();
+            const reminderShareUrl = buildReminderShareUrl();
+            const confirmationShareUrl = buildConfirmationShareUrl(challengerAgreesWithCreator);
             const forceVotingPeriod = earlyVote === "1";
             const votingPeriod = forceVotingPeriod || (deadline && (new Date(deadline).getTime() <= Date.now()));
             const bid = currentBidFromLocation();
+            const debugVotesMode = (getMergedParamsFromLocation().get("debug_votes") || "") === "1";
             const parsedEarlyEndedAt = earlyEndedAt ? new Date(earlyEndedAt) : null;
             const hasEarlyEndedTimestamp = Boolean(parsedEarlyEndedAt && !Number.isNaN(parsedEarlyEndedAt.getTime()));
             const betTimingLabel = forceVotingPeriod && hasEarlyEndedTimestamp
@@ -2757,6 +2919,13 @@
             const isCreatorGameOn = isCreatorView && creatorStep === "gameon";
             const viewerVoteChoice = isCreatorView ? creatorVoteChoice : challengerVoteChoice;
             const hasViewerVoted = Boolean(viewerVoteChoice);
+            const opponentVoteChoice = isCreatorView ? challengerVoteChoice : creatorVoteChoice;
+            const hasOpponentVoted = Boolean(opponentVoteChoice);
+            const opponentName = isCreatorView ? challengerName : creatorName;
+            const opponentDisplayName = cleanFieldText(opponentName, FIELD_LIMITS.name) || (isCreatorView ? "Challenger" : "Creator");
+            const votingCountdownLabel = hasViewerVoted && !hasOpponentVoted
+                ? `${opponentDisplayName} Needs to Vote`
+                : "Pick Your Winner";
             const showCreatorWaitingForConfirmation =
                 isCreatorView && flowStep === "invite" && !hasChallengerSentConfirmation && !isCreatorGameOn;
             // Same live-bet chrome as after /share/confirm-agree/ → / (calendar, next step, re-share): challenger had accepted + confirmation sent, on either track.
@@ -2791,6 +2960,8 @@
                 ${showCreatorWaitingForConfirmation ? '<p class="subtitle"><strong>Status:</strong> Waiting for your friend to send you back their confirmation link.</p>' : ""}
                 ${postConfirmLiveUi && !votingPeriod ? '<p class="subtitle"><strong>Next step:</strong> Check back for the countdown and then you\'ll be able to vote.</p>' : ""}
                 ${hasViewerVoted ? '<p class="subtitle"><strong>Status:</strong> Waiting for all the votes...</p>' : ""}
+                ${debugVotesMode ? `<p class="subtitle" style="font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px;"><strong>Debug:</strong> bid=${escapeHtml(bid || "none")} | cv=${escapeHtml(creatorVoteChoice || "∅")} | chv=${escapeHtml(challengerVoteChoice || "∅")} | src=${escapeHtml(source || "creator")}</p>` : ""}
+                ${hasViewerVoted && !hasOpponentVoted ? `<p class="subtitle" style="text-align: center; margin-top: 6px;"><button id="send-vote-reminder" class="cta" type="button">${shareActionLabel("Send a reminder")}</button></p>` : ""}
                 ${(!acceptedFromChallenger || !hasChallengerSentConfirmation) && !isCreatorGameOn
                     ? `<button id="share-link" class="${acceptedFromChallenger ? challengerButtonClass : inviteButtonClass}${votingPeriod ? " is-hidden" : ""}" type="button">${acceptedFromChallenger ? challengerButtonLabel : inviteButtonLabel}</button>`
                     : ""}
@@ -2817,9 +2988,13 @@
                     if (e.currentTarget.getAttribute("aria-disabled") === "true") {
                         return;
                     }
+                    await ensureDbBackedBidForShare();
+                    const liveChallengeShareUrl = buildChallengeShareUrl();
+                    const liveReminderShareUrl = buildReminderShareUrl();
+                    const liveConfirmationShareUrl = buildConfirmationShareUrl(challengerAgreesWithCreator);
                     const shareUrl = hasChallengerAccepted
-                        ? (acceptedFromChallenger ? confirmationShareUrl : window.location.href)
-                        : challengeShareUrl;
+                        ? (acceptedFromChallenger ? liveConfirmationShareUrl : window.location.href)
+                        : liveChallengeShareUrl;
                     const showCreatorHandoff = isCreatorView && !hasChallengerAccepted && !hasInvitedChallenger;
                     const showChallengerHandoff = acceptedFromChallenger && !hasChallengerSentConfirmation;
                     if (showCreatorHandoff) {
@@ -2844,7 +3019,7 @@
                         }
                         return "creator_invite_direct";
                     })();
-                    const shareTargetUrl = shareContext === "creator_reminder" ? reminderShareUrl : shareUrl;
+                    const shareTargetUrl = shareContext === "creator_reminder" ? liveReminderShareUrl : shareUrl;
                     trackBetsieEvent("betsie_share_intent", { share_context: shareContext });
                     await shareCurrentLink(shareTargetUrl, { share_context: shareContext });
                     if (isCreatorView && !hasChallengerAccepted && !hasInvitedChallenger) {
@@ -2855,6 +3030,13 @@
                         trackBetsieEvent("betsie_challenger_step", { step: "respond", source: "share_button" });
                         void updateUrl("active", { src: "accept", cr: "1", hf: "" });
                     }
+                });
+            }
+            const voteReminderButton = document.getElementById("send-vote-reminder");
+            if (voteReminderButton) {
+                voteReminderButton.addEventListener("click", async () => {
+                    trackBetsieEvent("betsie_share_intent", { share_context: "vote_nudge_reminder_button" });
+                    await shareVoteNudgeToOpponent();
                 });
             }
             if (!p2 && !votingPeriod && document.getElementById("accept-preview")) {
@@ -2973,9 +3155,11 @@
 
             const el = document.getElementById("countdown");
             const timer = setInterval(() => {
-                const countdownText = forceVotingPeriod ? "Pick Your Winner" : formatCountdown(deadline);
+                const baseCountdownText = formatCountdown(deadline);
+                const isVotingNow = forceVotingPeriod || baseCountdownText === "Pick Your Winner";
+                const countdownText = isVotingNow ? votingCountdownLabel : baseCountdownText;
                 el.textContent = countdownText;
-                if (countdownText === "Pick Your Winner") {
+                if (isVotingNow) {
                     clearInterval(timer);
                     // Re-render when countdown ends so all active-view controls switch into voting mode.
                     if (!votingPeriod) {
@@ -2985,8 +3169,22 @@
                     setVotingPeriod(true);
                 }
             }, 1000);
-            el.textContent = forceVotingPeriod ? "Pick Your Winner" : formatCountdown(deadline);
-            setVotingPeriod(el.textContent === "Pick Your Winner");
+            const initialBaseCountdownText = formatCountdown(deadline);
+            const initialVotingPeriod = forceVotingPeriod || initialBaseCountdownText === "Pick Your Winner";
+            el.textContent = initialVotingPeriod ? votingCountdownLabel : initialBaseCountdownText;
+            setVotingPeriod(initialVotingPeriod);
+
+            const pendingVoteConfirmDraft = consumeVoteConfirmDraftForCurrentBet();
+            if (pendingVoteConfirmDraft && votingPeriod) {
+                requestAnimationFrame(() => {
+                    trackBetsieEvent("betsie_modal", {
+                        modal_id: "vote_confirm",
+                        action: "auto_open_after_switch",
+                        choice: pendingVoteConfirmDraft
+                    });
+                    openVoteConfirmModal(pendingVoteConfirmDraft, isCreatorView ? "creator" : "challenger");
+                });
+            }
 
             if (bid) {
                 activeStateSyncTimer = setInterval(async () => {
@@ -3490,6 +3688,7 @@
                 closeVoteConfirmModal();
                 try {
                     await confirmViewerVoteChoice(choice);
+                    await shareVoteNudgeToOpponent();
                 } catch (_) {
                     alert("Could not save your vote right now. Please try again.");
                     renderActive();
@@ -3502,6 +3701,25 @@
             voteConfirmModal.addEventListener("click", (event) => {
                 if (event.target === voteConfirmModal) {
                     closeVoteConfirmModal();
+                    return;
+                }
+                const switchTrigger = event.target.closest("#vote-confirm-switch-link");
+                if (switchTrigger) {
+                    event.preventDefault();
+                    const draftChoice = voteConfirmState.choice;
+                    if (draftChoice) {
+                        stashVoteConfirmDraftForCurrentBet(draftChoice);
+                    }
+                    const locParams = getMergedParamsFromLocation();
+                    const currentlyChallengerTrack = (locParams.get("src") || "") === "accept";
+                    const nextSrc = currentlyChallengerTrack ? "" : "accept";
+                    trackBetsieEvent("betsie_modal", {
+                        modal_id: "vote_confirm",
+                        action: "switch_role",
+                        next_role: currentlyChallengerTrack ? "creator" : "challenger"
+                    });
+                    closeVoteConfirmModal();
+                    void updateUrl("active", { src: nextSrc, review: "" });
                     return;
                 }
                 const editTrigger = event.target.closest("#vote-confirm-edit-link");

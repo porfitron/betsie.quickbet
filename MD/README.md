@@ -15,6 +15,8 @@ Betsie Lite is a lightweight chat-native betting experience that now runs on a d
 - **[PRD.md](PRD.md)** — product requirements and end-to-end user journeys.
 - **[DESIGN.md](DESIGN.md)** — visual, interaction, and language system.
 - **[MEASUREMENT.md](MEASUREMENT.md)** — GA4 events, milestones, and reporting patterns.
+- **[LOCAL_DEV.md](LOCAL_DEV.md)** — Cursor-first local development and preview workflow.
+- **[COMMANDS.md](COMMANDS.md)** — quick command reference for development, migrations, and deploy.
 - **[SERVER_SETUP.md](SERVER_SETUP.md)** — Cloudflare Worker setup, environments, deployment, and operations.
 - **[DATABASE_SCHEMA.md](DATABASE_SCHEMA.md)** — canonical data model, constraints, indexes, and lifecycle rules.
 - **[TODO.md](TODO.md)** — implementation roadmap and follow-up work.

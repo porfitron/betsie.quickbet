@@ -1,3 +1,14 @@
+node_modules/**
+.git/**
+.wrangler/**
+MD/**
+src/**
+migrations/**
+package.json
+package-lock.json
+wrangler.jsonc
+.dev.vars*
+.env*
 # Not served as HTTP — keep uploads small and avoid leaking source/config
 .git/
 .github/
