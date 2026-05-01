@@ -1331,6 +1331,17 @@
             </div>
         </div>
     </div>
+    <div id="vote-confirm-modal" class="modal-overlay is-hidden" role="dialog" aria-modal="true" aria-labelledby="vote-confirm-title">
+        <div class="modal-card">
+            <h2 id="vote-confirm-title" class="modal-title modal-title--share-handoff-confirm">Confirm your vote</h2>
+            <p id="vote-confirm-body" class="modal-text">Make sure this is the position you want to lock in.</p>
+            <div id="vote-confirm-summary" class="modal-summary"></div>
+            <div class="modal-actions">
+                <button id="vote-confirm-primary" class="cta" type="button">Confirm vote</button>
+                <button id="vote-confirm-cancel" class="ghost" type="button">Cancel</button>
+            </div>
+        </div>
+    </div>
     <div id="early-call-notify-modal" class="modal-overlay is-hidden" role="dialog" aria-modal="true" aria-labelledby="early-call-notify-title">
         <div class="modal-card">
             <h2 id="early-call-notify-title" class="modal-title">The bet was called early</h2>
@@ -1369,14 +1380,16 @@
         const shareHandoffModal = document.getElementById("share-handoff-modal");
         const earlyEndModal = document.getElementById("early-end-modal");
         const challengeAcceptedModal = document.getElementById("challenge-accepted-modal");
+        const voteConfirmModal = document.getElementById("vote-confirm-modal");
         const earlyCallNotifyModal = document.getElementById("early-call-notify-modal");
         const celebrationModal = document.getElementById("celebration-modal");
         const shareHandoffState = { role: null, url: "" };
+        const voteConfirmState = { choice: "", role: "" };
         let settleShareUrlForModal = "";
         const url = new URL(window.location.href);
         const HASH_STATE_VERSION = 1;
-        const SHAREABLE_STATE_KEYS = ["mode", "t", "cn", "chn", "p1", "p2", "d", "tt", "ct", "w", "src", "cs", "inv", "cr", "hf", "ev", "ee", "eab"];
-        const SEARCH_FALLBACK_KEYS = ["mode", "t", "d", "cn", "chn", "p1", "p2", "tt", "ct", "w", "src", "cr", "ev", "ee", "eab"];
+        const SHAREABLE_STATE_KEYS = ["mode", "t", "cn", "chn", "p1", "p2", "d", "tt", "ct", "w", "src", "cs", "inv", "cr", "hf", "ev", "ee", "eab", "cv", "chv"];
+        const SEARCH_FALLBACK_KEYS = ["mode", "t", "d", "cn", "chn", "p1", "p2", "tt", "ct", "w", "src", "cr", "ev", "ee", "eab", "cv", "chv"];
         const FIELD_LIMITS = {
             name: 20,
             claim: 70,
@@ -1582,6 +1595,8 @@
         let earlyVote = "";
         let earlyEndedAt = "";
         let earlyCalledBy = "";
+        let creatorVoteChoice = "";
+        let challengerVoteChoice = "";
         let activeStateSyncTimer = null;
 
         function syncStateVariablesFromParams(p) {
@@ -1605,6 +1620,8 @@
             earlyVote = p.get("ev") || "";
             earlyEndedAt = p.get("ee") || "";
             earlyCalledBy = p.get("eab") || "";
+            creatorVoteChoice = p.get("cv") || "";
+            challengerVoteChoice = p.get("chv") || "";
         }
 
         function currentBidFromLocation() {
@@ -1678,6 +1695,22 @@
             } catch (_) {
                 // Ignore network errors; settle flow should continue with URL state.
             }
+        }
+
+        async function confirmViewerVoteChoice(choice) {
+            if (!choice) {
+                return;
+            }
+            await persistViewerVoteChoice(choice);
+            const viewerIsCreator = (getMergedParamsFromLocation().get("src") || "") !== "accept";
+            const votePayload = viewerIsCreator
+                ? { cv: choice }
+                : { chv: choice };
+            await updateUrl("active", {
+                ...votePayload,
+                cs: "gameon",
+                w: ""
+            });
         }
 
         function trackBetsieEvent(name, params) {
@@ -2155,6 +2188,63 @@
 
         function closeChallengeAcceptedModal() {
             challengeAcceptedModal.classList.add("is-hidden");
+        }
+
+        function viewerVoteChoiceLabel(choice, role) {
+            const creatorLabel = creatorName || "Creator";
+            const challengerLabel = challengerName || "Challenger";
+            if (choice === "creator") {
+                return `${creatorLabel} won`;
+            }
+            if (choice === "challenger") {
+                return `${challengerLabel} won`;
+            }
+            if (choice === "no_contest") {
+                return "No Contest (Something else happened)";
+            }
+            return role === "creator" ? "Creator won" : "Challenger won";
+        }
+
+        function buildVoteConfirmSummary(role, choice) {
+            const rows = [
+                ["You are", role === "creator" ? (creatorName || "Creator") : (challengerName || "Challenger")],
+                ["Your vote", viewerVoteChoiceLabel(choice, role)],
+                ["Bet", title || "—"]
+            ];
+            return rows
+                .map(
+                    ([k, v]) =>
+                        `<div class="modal-summary-row"><span class="modal-summary-k">${escapeHtml(k)}</span><span class="modal-summary-v">${escapeHtml(v)}</span></div>`
+                )
+                .join("");
+        }
+
+        function openVoteConfirmModal(choice, role) {
+            voteConfirmState.choice = choice;
+            voteConfirmState.role = role;
+            const summaryEl = document.getElementById("vote-confirm-summary");
+            summaryEl.innerHTML = `
+                <div class="modal-summary-header">
+                    <p class="modal-summary-caption">Vote details</p>
+                    <button type="button" class="modal-summary-edit" id="vote-confirm-edit-link">Edit</button>
+                </div>
+                ${buildVoteConfirmSummary(role, choice)}
+            `;
+            voteConfirmModal.classList.remove("is-hidden");
+            const confirmEl = document.getElementById("vote-confirm-primary");
+            if (confirmEl) {
+                confirmEl.focus();
+            }
+        }
+
+        function closeVoteConfirmModal() {
+            voteConfirmModal.classList.add("is-hidden");
+            voteConfirmState.choice = "";
+            voteConfirmState.role = "";
+            const summaryEl = document.getElementById("vote-confirm-summary");
+            if (summaryEl) {
+                summaryEl.innerHTML = "";
+            }
         }
 
         function openEarlyCallNotifyModal(titleText) {
@@ -2664,6 +2754,8 @@
             const creatorVoteLabel = samePosition ? "Both Right!" : `${escapedCreatorName} Won!`;
             const challengerVoteLabel = samePosition ? "Both Wrong!" : `${escapedChallengerName} Won!`;
             const isCreatorGameOn = isCreatorView && creatorStep === "gameon";
+            const viewerVoteChoice = isCreatorView ? creatorVoteChoice : challengerVoteChoice;
+            const hasViewerVoted = Boolean(viewerVoteChoice);
             const showCreatorWaitingForConfirmation =
                 isCreatorView && flowStep === "invite" && !hasChallengerSentConfirmation && !isCreatorGameOn;
             // Same live-bet chrome as after /share/confirm-agree/ → / (calendar, next step, re-share): challenger had accepted + confirmation sent, on either track.
@@ -2689,14 +2781,15 @@
                         <div class="competitor-quote">${challengerTrashTalk ? `"${escapedChallengerTrashTalk}"` : "\"No comment.\""}</div>
                     </article>
                 </section>
-                <div class="voting-actions${votingPeriod ? "" : " is-hidden"}">
+                <div class="voting-actions${votingPeriod && !hasViewerVoted ? "" : " is-hidden"}">
                     <button id="creator-won" class="winner-btn${samePosition ? " both-right" : ""}" type="button">${creatorVoteLabel}</button>
                     <button id="challenger-won" class="winner-btn" type="button">${challengerVoteLabel}</button>
                 </div>
-                ${postConfirmLiveUi && votingPeriod && !samePosition ? '<p class="subtitle" style="text-align: center;">If no one was right, <button id="no-contest-link" type="button" style="border: 0; background: transparent; color: inherit; text-decoration: underline; padding: 0; font: inherit; cursor: pointer;">click here</button>.</p>' : ""}
+                ${postConfirmLiveUi && votingPeriod && !samePosition && !hasViewerVoted ? '<p class="subtitle" style="text-align: center;">If no one was right, <button id="no-contest-link" type="button" style="border: 0; background: transparent; color: inherit; text-decoration: underline; padding: 0; font: inherit; cursor: pointer;">click here</button>.</p>' : ""}
                 <p class="subtitle"><strong>Who can see this?</strong><br>Anyone with a link</p>
                 ${showCreatorWaitingForConfirmation ? '<p class="subtitle"><strong>Status:</strong> Waiting for your friend to send you back their confirmation link.</p>' : ""}
                 ${postConfirmLiveUi && !votingPeriod ? '<p class="subtitle"><strong>Next step:</strong> Check back for the countdown and then you\'ll be able to vote.</p>' : ""}
+                ${hasViewerVoted ? '<p class="subtitle"><strong>Status:</strong> Waiting for all the votes...</p>' : ""}
                 ${(!acceptedFromChallenger || !hasChallengerSentConfirmation) && !isCreatorGameOn
                     ? `<button id="share-link" class="${acceptedFromChallenger ? challengerButtonClass : inviteButtonClass}${votingPeriod ? " is-hidden" : ""}" type="button">${acceptedFromChallenger ? challengerButtonLabel : inviteButtonLabel}</button>`
                     : ""}
@@ -2785,20 +2878,17 @@
             }
             document.getElementById("creator-won").addEventListener("click", () => {
                 trackBetsieEvent("betsie_vote", { choice: "creator", phase: "after_deadline" });
-                void persistViewerVoteChoice("creator");
-                void updateUrl("settle", { w: "1" });
+                openVoteConfirmModal("creator", isCreatorView ? "creator" : "challenger");
             });
             document.getElementById("challenger-won").addEventListener("click", () => {
                 trackBetsieEvent("betsie_vote", { choice: "challenger", phase: "after_deadline" });
-                void persistViewerVoteChoice("challenger");
-                void updateUrl("settle", { w: "2" });
+                openVoteConfirmModal("challenger", isCreatorView ? "creator" : "challenger");
             });
             const noContestLink = document.getElementById("no-contest-link");
             if (noContestLink) {
                 noContestLink.addEventListener("click", () => {
                     trackBetsieEvent("betsie_vote", { choice: "no_contest", phase: "after_deadline" });
-                    void persistViewerVoteChoice("no_contest");
-                    void updateUrl("settle", { w: "0" });
+                    openVoteConfirmModal("no_contest", isCreatorView ? "creator" : "challenger");
                 });
             }
             if (isCreatorView) {
@@ -2864,7 +2954,7 @@
             function setVotingPeriod(isVotingPeriod) {
                 const votingActions = document.querySelector(".voting-actions");
                 if (votingActions) {
-                    votingActions.classList.toggle("is-hidden", !isVotingPeriod);
+                    votingActions.classList.toggle("is-hidden", !isVotingPeriod || hasViewerVoted);
                 }
                 document.getElementById("creator-won").classList.toggle("is-hidden", !isVotingPeriod);
                 document.getElementById("challenger-won").classList.toggle("is-hidden", !isVotingPeriod);
@@ -3351,6 +3441,32 @@
                     navigateFromHandoffEdit();
                 }
             });
+            document.getElementById("vote-confirm-primary").addEventListener("click", async () => {
+                const choice = voteConfirmState.choice;
+                if (!choice) {
+                    closeVoteConfirmModal();
+                    return;
+                }
+                trackBetsieEvent("betsie_modal", { modal_id: "vote_confirm", action: "confirm", choice });
+                closeVoteConfirmModal();
+                await confirmViewerVoteChoice(choice);
+            });
+            document.getElementById("vote-confirm-cancel").addEventListener("click", () => {
+                trackBetsieEvent("betsie_modal", { modal_id: "vote_confirm", action: "cancel" });
+                closeVoteConfirmModal();
+            });
+            voteConfirmModal.addEventListener("click", (event) => {
+                if (event.target === voteConfirmModal) {
+                    closeVoteConfirmModal();
+                    return;
+                }
+                const editTrigger = event.target.closest("#vote-confirm-edit-link");
+                if (editTrigger) {
+                    event.preventDefault();
+                    trackBetsieEvent("betsie_modal", { modal_id: "vote_confirm", action: "edit_vote" });
+                    closeVoteConfirmModal();
+                }
+            });
             document.getElementById("early-end-confirm").addEventListener("click", () => {
                 trackBetsieEvent("betsie_vote", { choice: "call_early_confirm", phase: "countdown" });
                 closeEarlyEndModal();
@@ -3408,6 +3524,9 @@
                 }
                 if (event.key === "Escape" && !challengeAcceptedModal.classList.contains("is-hidden")) {
                     closeChallengeAcceptedModal();
+                }
+                if (event.key === "Escape" && !voteConfirmModal.classList.contains("is-hidden")) {
+                    closeVoteConfirmModal();
                 }
                 if (event.key === "Escape" && !earlyCallNotifyModal.classList.contains("is-hidden")) {
                     closeEarlyCallNotifyModal();
