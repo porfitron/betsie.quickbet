@@ -1571,6 +1571,7 @@
 
         async function updateUrl(nextMode, data = {}) {
             const nextParams = new URLSearchParams(getMergedParamsFromLocation().toString());
+            const clearedKeysForApi = [];
             if (nextMode) {
                 nextParams.set("mode", nextMode);
             }
@@ -1579,10 +1580,16 @@
                     nextParams.set(key, value);
                 } else {
                     nextParams.delete(key);
+                    if (SHAREABLE_STATE_KEYS.includes(key)) {
+                        clearedKeysForApi.push(key);
+                    }
                 }
             });
             let bid = nextParams.get("bid") || "";
             const body = shareableParamsToApiBody(nextParams);
+            clearedKeysForApi.forEach((key) => {
+                body[key] = null;
+            });
             const shouldCreateNewBet =
                 !bid &&
                 !nextParams.get("src") &&
