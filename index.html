@@ -2795,10 +2795,21 @@
                             return;
                         }
                         const row = await res.json();
-                        const nextEarlyVote = String(row && row.ev ? row.ev : "");
-                        if (nextEarlyVote === "1" && earlyVote !== "1") {
-                            earlyVote = "1";
-                            earlyEndedAt = String((row && row.ee) || new Date().toISOString());
+                        const currentParams = getMergedParamsFromLocation();
+                        const nextParams = new URLSearchParams(currentParams.toString());
+                        applyApiBetRowToParams(row, nextParams);
+                        nextParams.set("bid", bid);
+                        const hasRemoteAcceptedPosition = Boolean(nextParams.get("p2"));
+                        const isNewAcceptedPosition = hasRemoteAcceptedPosition && !p2;
+                        const isNewEarlyVote = (nextParams.get("ev") || "") === "1" && earlyVote !== "1";
+                        if (isNewAcceptedPosition || isNewEarlyVote) {
+                            syncStateVariablesFromParams(nextParams);
+                            if (!paramsEquivalent(nextParams, currentParams)) {
+                                const nextLoc = new URL(window.location.href);
+                                nextLoc.search = nextParams.toString();
+                                nextLoc.hash = "";
+                                history.replaceState({}, "", nextLoc.toString());
+                            }
                             renderActive();
                         }
                     } catch (_) {
