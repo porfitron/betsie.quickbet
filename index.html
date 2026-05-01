@@ -2672,14 +2672,17 @@
                 bindChallengerBreadcrumb();
             }
 
+            const hasDbBackedBet = Boolean(currentBidFromLocation());
             const shouldAutoCreatorHandoff =
                 handoffFlash === "c" &&
+                !hasDbBackedBet &&
                 isCreatorView &&
                 !hasChallengerAccepted &&
                 !hasInvitedChallenger &&
                 !consumeHandoffSuppressed("creator");
             const shouldAutoChallengerHandoff =
                 handoffFlash === "ch" &&
+                !hasDbBackedBet &&
                 acceptedFromChallenger &&
                 !hasChallengerSentConfirmation &&
                 !consumeHandoffSuppressed("challenger");
