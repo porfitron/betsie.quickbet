@@ -3003,43 +3003,81 @@
                         const hasRemoteAcceptedPosition = Boolean(nextParams.get("p2"));
                         const isNewAcceptedPosition = hasRemoteAcceptedPosition && !p2;
                         const isNewEarlyVote = (nextParams.get("ev") || "") === "1" && earlyVote !== "1";
-                        if (isNewAcceptedPosition || isNewEarlyVote) {
-                            syncStateVariablesFromParams(nextParams);
-                            if (!paramsEquivalent(nextParams, currentParams)) {
-                                const nextLoc = new URL(window.location.href);
-                                nextLoc.search = nextParams.toString();
-                                nextLoc.hash = "";
-                                history.replaceState({}, "", nextLoc.toString());
-                            }
-                            if (isNewAcceptedPosition && isCreatorView && flowStep === "invite") {
-                                trackBetsieEvent("betsie_modal", { modal_id: "challenge_accepted", action: "auto_open" });
-                                openChallengeAcceptedModal();
-                                return;
-                            }
-                            if (isNewEarlyVote) {
-                                const viewerIsCreator = !(currentParams.get("src") === "accept");
-                                const eabVal = (nextParams.get("eab") || "");
-                                let showEarlyNotify = false;
-                                let earlyNotifyTitle = "The bet was called early";
-                                if (eabVal === "1") {
-                                    showEarlyNotify = !viewerIsCreator;
-                                    earlyNotifyTitle = "Creator calls it early";
-                                } else if (eabVal === "2") {
-                                    showEarlyNotify = viewerIsCreator;
-                                    earlyNotifyTitle = "Challenger calls it early";
-                                }
-                                if (showEarlyNotify) {
-                                    trackBetsieEvent("betsie_modal", {
-                                        modal_id: "early_call_notify",
-                                        action: "auto_open",
-                                        eab: eabVal
-                                    });
-                                    openEarlyCallNotifyModal(earlyNotifyTitle);
+                        const votesChanged =
+                            (nextParams.get("cv") || "") !== (currentParams.get("cv") || "") ||
+                            (nextParams.get("chv") || "") !== (currentParams.get("chv") || "");
+                        const hasAnyRemoteStateChange = !paramsEquivalent(nextParams, currentParams);
+                        if (!hasAnyRemoteStateChange && !isNewAcceptedPosition && !isNewEarlyVote && !votesChanged) {
+                            return;
+                        }
+                        syncStateVariablesFromParams(nextParams);
+                        if (hasAnyRemoteStateChange) {
+                            const nextLoc = new URL(window.location.href);
+                            nextLoc.search = nextParams.toString();
+                            nextLoc.hash = "";
+                            history.replaceState({}, "", nextLoc.toString());
+                        }
+
+                        const remoteCreatorVote = nextParams.get("cv") || "";
+                        const remoteChallengerVote = nextParams.get("chv") || "";
+                        if (remoteCreatorVote && remoteChallengerVote) {
+                            if (remoteCreatorVote === remoteChallengerVote) {
+                                const winnerByVote = remoteCreatorVote === "creator"
+                                    ? "1"
+                                    : remoteCreatorVote === "challenger"
+                                      ? "2"
+                                      : remoteCreatorVote === "no_contest"
+                                        ? "0"
+                                        : "";
+                                if (winnerByVote) {
+                                    void updateUrl("settle", { w: winnerByVote });
                                     return;
                                 }
+                            } else {
+                                trackBetsieEvent("betsie_vote", { choice: "reset_due_disagreement", phase: "after_deadline" });
+                                try {
+                                    await fetch(`/api/bets/${encodeURIComponent(bid)}`, {
+                                        method: "PATCH",
+                                        headers: { "Content-Type": "application/json" },
+                                        body: JSON.stringify({ cv: null, chv: null, w: null })
+                                    });
+                                } catch (_) {
+                                    // If reset fails, keep current state and retry on next poll.
+                                }
+                                alert("Votes did not match. Please vote again.");
+                                void updateUrl("active", { cv: "", chv: "", w: "" });
+                                return;
                             }
-                            renderActive();
                         }
+
+                        if (isNewAcceptedPosition && isCreatorView && flowStep === "invite") {
+                            trackBetsieEvent("betsie_modal", { modal_id: "challenge_accepted", action: "auto_open" });
+                            openChallengeAcceptedModal();
+                            return;
+                        }
+                        if (isNewEarlyVote) {
+                            const viewerIsCreator = !(currentParams.get("src") === "accept");
+                            const eabVal = (nextParams.get("eab") || "");
+                            let showEarlyNotify = false;
+                            let earlyNotifyTitle = "The bet was called early";
+                            if (eabVal === "1") {
+                                showEarlyNotify = !viewerIsCreator;
+                                earlyNotifyTitle = "Creator calls it early";
+                            } else if (eabVal === "2") {
+                                showEarlyNotify = viewerIsCreator;
+                                earlyNotifyTitle = "Challenger calls it early";
+                            }
+                            if (showEarlyNotify) {
+                                trackBetsieEvent("betsie_modal", {
+                                    modal_id: "early_call_notify",
+                                    action: "auto_open",
+                                    eab: eabVal
+                                });
+                                openEarlyCallNotifyModal(earlyNotifyTitle);
+                                return;
+                            }
+                        }
+                        renderActive();
                     } catch (_) {
                         // Ignore transient sync errors; next poll attempt will retry.
                     }
