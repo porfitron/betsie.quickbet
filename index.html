@@ -1550,6 +1550,7 @@
         let handoffFlash = "";
         let earlyVote = "";
         let earlyEndedAt = "";
+        let activeStateSyncTimer = null;
 
         function syncStateVariablesFromParams(p) {
             hasIncomingShareableState = SHAREABLE_STATE_KEYS.some((key) => p.has(key));
@@ -2499,6 +2500,10 @@
         }
 
         function renderActive() {
+            if (activeStateSyncTimer) {
+                clearInterval(activeStateSyncTimer);
+                activeStateSyncTimer = null;
+            }
             const escapedTitle = escapeHtml(title);
             const escapedCreatorName = escapeHtml(creatorName || "Creator");
             const escapedChallengerName = escapeHtml(challengerName || "Challenger");
@@ -2552,6 +2557,7 @@
             })();
             const forceVotingPeriod = earlyVote === "1";
             const votingPeriod = forceVotingPeriod || (deadline && (new Date(deadline).getTime() <= Date.now()));
+            const bid = currentBidFromLocation();
             const parsedEarlyEndedAt = earlyEndedAt ? new Date(earlyEndedAt) : null;
             const hasEarlyEndedTimestamp = Boolean(parsedEarlyEndedAt && !Number.isNaN(parsedEarlyEndedAt.getTime()));
             const betTimingLabel = forceVotingPeriod && hasEarlyEndedTimestamp
@@ -2752,6 +2758,10 @@
                 }
             }
             function setVotingPeriod(isVotingPeriod) {
+                const votingActions = document.querySelector(".voting-actions");
+                if (votingActions) {
+                    votingActions.classList.toggle("is-hidden", !isVotingPeriod);
+                }
                 document.getElementById("creator-won").classList.toggle("is-hidden", !isVotingPeriod);
                 document.getElementById("challenger-won").classList.toggle("is-hidden", !isVotingPeriod);
                 document.getElementById("share-link").classList.toggle("is-hidden", isVotingPeriod);
@@ -2762,14 +2772,40 @@
 
             const el = document.getElementById("countdown");
             const timer = setInterval(() => {
-                el.textContent = forceVotingPeriod ? "Pick Your Winner" : formatCountdown(deadline);
-                if (el.textContent === "Pick Your Winner") {
-                    setVotingPeriod(true);
+                const countdownText = forceVotingPeriod ? "Pick Your Winner" : formatCountdown(deadline);
+                el.textContent = countdownText;
+                if (countdownText === "Pick Your Winner") {
                     clearInterval(timer);
+                    // Re-render when countdown ends so all active-view controls switch into voting mode.
+                    if (!votingPeriod) {
+                        renderActive();
+                        return;
+                    }
+                    setVotingPeriod(true);
                 }
             }, 1000);
             el.textContent = forceVotingPeriod ? "Pick Your Winner" : formatCountdown(deadline);
             setVotingPeriod(el.textContent === "Pick Your Winner");
+
+            if (bid) {
+                activeStateSyncTimer = setInterval(async () => {
+                    try {
+                        const res = await fetch(`/api/bets/${encodeURIComponent(bid)}`);
+                        if (!res.ok) {
+                            return;
+                        }
+                        const row = await res.json();
+                        const nextEarlyVote = String(row && row.ev ? row.ev : "");
+                        if (nextEarlyVote === "1" && earlyVote !== "1") {
+                            earlyVote = "1";
+                            earlyEndedAt = String((row && row.ee) || new Date().toISOString());
+                            renderActive();
+                        }
+                    } catch (_) {
+                        // Ignore transient sync errors; next poll attempt will retry.
+                    }
+                }, 5000);
+            }
         }
 
         function renderAccept() {
