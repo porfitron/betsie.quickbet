@@ -20,7 +20,7 @@
     {
       "binding": "DB",
       "database_name": "quickbet",
-      "database_id": "00000000-0000-0000-0000-000000000001",
+      "database_id": "b9040359-8b22-433a-bbec-b54a892b10f4",
       "migrations_dir": "migrations"
     }
   ]
