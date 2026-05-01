@@ -1497,6 +1497,7 @@
                 return p;
             }
             try {
+                const explicitUrlParams = new URLSearchParams(new URL(window.location.href).search);
                 const res = await fetch(`/api/bets/${encodeURIComponent(bid)}`);
                 if (!res.ok) {
                     return p;
@@ -1504,6 +1505,15 @@
                 const row = await res.json();
                 applyApiBetRowToParams(row, p);
                 p.set("bid", bid);
+                // Preserve explicit URL intent so button transitions are not overridden by stale DB fields.
+                SHAREABLE_STATE_KEYS.forEach((key) => {
+                    if (explicitUrlParams.has(key)) {
+                        p.set(key, explicitUrlParams.get(key) || "");
+                    }
+                });
+                if (explicitUrlParams.has("review")) {
+                    p.set("review", explicitUrlParams.get("review") || "");
+                }
                 const mergedDisplay = new URLSearchParams(p.toString());
                 const currentDisplay = new URLSearchParams(new URL(window.location.href).search);
                 if (!paramsEquivalent(mergedDisplay, currentDisplay)) {
