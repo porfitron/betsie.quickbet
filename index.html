@@ -1563,6 +1563,62 @@
             earlyEndedAt = p.get("ee") || "";
         }
 
+        function currentBidFromLocation() {
+            return getMergedParamsFromLocation().get("bid") || "";
+        }
+
+        function markHandoffSuppressed(role) {
+            if (!role) {
+                return;
+            }
+            try {
+                const bid = currentBidFromLocation();
+                if (!bid) {
+                    return;
+                }
+                sessionStorage.setItem(`betsieHandoffSuppress:${bid}:${role}`, "1");
+            } catch (_) {
+                // Ignore storage failures.
+            }
+        }
+
+        function consumeHandoffSuppressed(role) {
+            if (!role) {
+                return false;
+            }
+            try {
+                const bid = currentBidFromLocation();
+                if (!bid) {
+                    return false;
+                }
+                const key = `betsieHandoffSuppress:${bid}:${role}`;
+                const suppressed = sessionStorage.getItem(key) === "1";
+                if (suppressed) {
+                    sessionStorage.removeItem(key);
+                }
+                return suppressed;
+            } catch (_) {
+                return false;
+            }
+        }
+
+        async function clearHandoffFlashForCurrentBet() {
+            removeHandoffFlashFromAddressBar();
+            const bid = currentBidFromLocation();
+            if (!bid) {
+                return;
+            }
+            try {
+                await fetch(`/api/bets/${encodeURIComponent(bid)}`, {
+                    method: "PATCH",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ hf: null })
+                });
+            } catch (_) {
+                // Ignore network errors; URL is already cleaned locally.
+            }
+        }
+
         function trackBetsieEvent(name, params) {
             if (typeof gtag === "function") {
                 gtag("event", name, params || {});
@@ -2179,6 +2235,8 @@
         function navigateFromHandoffEdit() {
             const role = shareHandoffState.role;
             closeShareHandoffModal();
+            markHandoffSuppressed(role);
+            void clearHandoffFlashForCurrentBet();
             const persistBid = getMergedParamsFromLocation().get("bid") || "";
             if (role === "creator") {
                 const q = new URLSearchParams();
@@ -2615,9 +2673,16 @@
             }
 
             const shouldAutoCreatorHandoff =
-                handoffFlash === "c" && isCreatorView && !hasChallengerAccepted && !hasInvitedChallenger;
+                handoffFlash === "c" &&
+                isCreatorView &&
+                !hasChallengerAccepted &&
+                !hasInvitedChallenger &&
+                !consumeHandoffSuppressed("creator");
             const shouldAutoChallengerHandoff =
-                handoffFlash === "ch" && acceptedFromChallenger && !hasChallengerSentConfirmation;
+                handoffFlash === "ch" &&
+                acceptedFromChallenger &&
+                !hasChallengerSentConfirmation &&
+                !consumeHandoffSuppressed("challenger");
             if (handoffFlash === "c" || handoffFlash === "ch") {
                 if (shouldAutoCreatorHandoff || shouldAutoChallengerHandoff) {
                     removeHandoffFlashFromAddressBar();
@@ -2989,6 +3054,7 @@
                 }
                 const role = shareHandoffState.role;
                 const handoffUrl = shareHandoffState.url;
+                markHandoffSuppressed(role);
                 trackBetsieEvent("betsie_share_handoff", { action: "primary_share", role });
                 try {
                     await shareCurrentLink(handoffUrl, { share_context: role === "creator" ? "creator_handoff" : "challenger_handoff" });
@@ -3011,6 +3077,7 @@
                 }
                 const role = shareHandoffState.role;
                 const handoffUrl = shareHandoffState.url;
+                markHandoffSuppressed(role);
                 const shareContext = role === "creator" ? "creator_handoff_copy" : "challenger_handoff_copy";
                 const shareText = composeShareText(shareContext);
                 trackBetsieEvent("betsie_share_handoff", { action: "copy_link", role });
