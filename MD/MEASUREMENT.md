@@ -4,6 +4,8 @@ Betsie Lite sends a **small set of named events** so you can read the product fu
 
 Events go through one helper that merges **`role`** (`creator` or `challenger`, from the viewer’s link) and **`bet_id`** when the URL has `bid`.
 
+**Local development:** The Google tag is **not** loaded on `localhost`, `127.0.0.1`, `*.localhost`, `file:` URLs, so no hits are sent from typical Cursor/local setups. To test GA against the real property from a dev URL, open the page with **`?betsie_ga=1`** (e.g. `http://localhost:8787/?betsie_ga=1`).
+
 ## Funnel in plain language
 
 1. **Landing** — Marketing home (`step` = `landing`).

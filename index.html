@@ -37,15 +37,38 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Funnel+Display:wght@700&display=swap" rel="stylesheet">
-    <!-- Google tag (gtag.js) -->
-    <script async src="https://www.googletagmanager.com/gtag/js?id=G-P2NCT6LW4D"></script>
+    <!-- Google tag (gtag.js): skipped on local/file dev so Cursor/local servers do not send hits. Add ?betsie_ga=1 to force-enable. -->
     <script>
-        window.dataLayer = window.dataLayer || [];
-        function gtag() {
-            dataLayer.push(arguments);
+        (function () {
+            const params = new URLSearchParams(window.location.search);
+            const forceGa = ["1", "true", "yes"].includes(String(params.get("betsie_ga") || "").toLowerCase());
+            const protocol = window.location.protocol;
+            const host = window.location.hostname || "";
+            const isFile = protocol === "file:";
+            const isLocalHost =
+                host === "localhost" ||
+                host === "127.0.0.1" ||
+                host === "::1" ||
+                host === "[::1]" ||
+                host.endsWith(".localhost");
+            const isLocalDev = isFile || isLocalHost;
+            window.betsieAnalyticsEnabled = forceGa || !isLocalDev;
+        })();
+    </script>
+    <script>
+        if (window.betsieAnalyticsEnabled) {
+            window.dataLayer = window.dataLayer || [];
+            function gtag() {
+                dataLayer.push(arguments);
+            }
+            window.gtag = gtag;
+            const gtagScript = document.createElement("script");
+            gtagScript.async = true;
+            gtagScript.src = "https://www.googletagmanager.com/gtag/js?id=G-P2NCT6LW4D";
+            document.head.appendChild(gtagScript);
+            gtag("js", new Date());
+            gtag("config", "G-P2NCT6LW4D");
         }
-        gtag("js", new Date());
-        gtag("config", "G-P2NCT6LW4D");
     </script>
     <script>
         if (window.location.protocol === "http:" && window.location.hostname !== "localhost" && window.location.hostname !== "127.0.0.1") {
@@ -2746,6 +2769,10 @@
                 .join("");
         }
 
+        function shareHandoffShareContext(role) {
+            return role === "creator" ? "creator_handoff_copy" : "challenger_handoff_copy";
+        }
+
         function openShareHandoffModal(role, handoffUrl, creatorLabel, challengerLabel) {
             shareHandoffState.role = role;
             shareHandoffState.url = urlWithoutHandoffFlash(handoffUrl);
@@ -3875,7 +3902,7 @@
                 trackCtaClicked("share_handoff_send", primaryBtn ? primaryBtn.textContent.trim() : "Confirm and send");
                 markHandoffSuppressed(role);
                 try {
-                    await shareCurrentLink(handoffUrl, { kind: "invite" });
+                    await shareCurrentLink(handoffUrl, { kind: "invite", share_context: shareHandoffShareContext(role) });
                 } catch (_) {
                     // Even if native share is cancelled/fails, continue to the next step.
                 } finally {
@@ -3895,7 +3922,7 @@
                 const role = shareHandoffState.role;
                 const handoffUrl = shareHandoffState.url;
                 markHandoffSuppressed(role);
-                const shareContext = role === "creator" ? "creator_handoff_copy" : "challenger_handoff_copy";
+                const shareContext = shareHandoffShareContext(role);
                 const shareText = composeShareText(shareContext);
                 const copyBtn = document.getElementById("share-handoff-copy");
                 trackCtaClicked("share_handoff_copy", copyBtn ? copyBtn.textContent.trim() : "Copy message");
