@@ -1,0 +1,466 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Preview — modal hero assets (WebP)</title>
+    <style>
+        :root {
+            --betsie-coral: #F36D6F;
+            --canvas-white: #FFFFFF;
+            --surface: #F8F9FA;
+            --text-primary: #1A1A1A;
+            --text-secondary: #6B7280;
+            --shadow-soft: 0 12px 34px rgba(17, 24, 39, 0.12);
+        }
+
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            margin: 0;
+            font-family: "Avenir Next", Avenir, "Poppins", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            background: #e8e8e8;
+            color: var(--text-primary);
+            -webkit-font-smoothing: antialiased;
+        }
+
+        .preview-top {
+            position: sticky;
+            top: 0;
+            z-index: 100;
+            background: rgba(255, 255, 255, 0.96);
+            border-bottom: 1px solid #d1d5db;
+            padding: 14px 18px;
+            backdrop-filter: blur(10px);
+        }
+
+        .preview-top h1 {
+            margin: 0 0 10px;
+            font-size: 1.05rem;
+            letter-spacing: -0.02em;
+        }
+
+        .preview-top p {
+            margin: 0 0 12px;
+            font-size: 0.88rem;
+            color: var(--text-secondary);
+            line-height: 1.45;
+            max-width: 720px;
+        }
+
+        .preview-nav {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px 14px;
+            font-size: 0.9rem;
+            font-weight: 700;
+        }
+
+        .preview-nav a {
+            color: var(--betsie-coral);
+        }
+
+        .preview-scene {
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 28px 16px;
+            scroll-margin-top: 120px;
+        }
+
+        .preview-scene:nth-child(even) {
+            background: #efefef;
+        }
+
+        .preview-scene:nth-child(odd) {
+            background: #e4e4e4;
+        }
+
+        .preview-label {
+            width: 100%;
+            max-width: 420px;
+            margin: 0 auto 14px;
+            font-size: 0.75rem;
+            font-weight: 700;
+            letter-spacing: 0.06em;
+            text-transform: uppercase;
+            color: var(--text-secondary);
+        }
+
+        /* ——— lifted from index.html (modal / celebration) ——— */
+        .modal-overlay {
+            position: relative;
+            inset: auto;
+            width: 100%;
+            max-width: 440px;
+            min-height: 320px;
+            margin: 0 auto;
+            background: rgba(17, 24, 39, 0.4);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 28px 20px;
+            border-radius: 16px;
+        }
+
+        .modal-card {
+            width: 100%;
+            max-width: 380px;
+            background: #FFF;
+            border-radius: 16px;
+            padding: 18px 16px 14px;
+            box-shadow: var(--shadow-soft);
+            border: 1px solid #E5E7EB;
+        }
+
+        .modal-title {
+            margin: 0;
+            font-size: 1.05rem;
+            letter-spacing: -0.01em;
+        }
+
+        .modal-text {
+            margin: 8px 0 14px;
+            color: var(--text-secondary);
+            font-size: 0.9rem;
+            line-height: 1.45;
+        }
+
+        .modal-actions {
+            display: grid;
+            gap: 8px;
+        }
+
+        .cta {
+            width: 100%;
+            min-height: 48px;
+            border-radius: 14px;
+            font-size: 1rem;
+            font-weight: 700;
+            cursor: default;
+            user-select: none;
+            margin-top: 10px;
+            border: 0;
+            color: var(--canvas-white);
+            background: linear-gradient(160deg, #F36D6F, #E75C60);
+            box-shadow: 0 8px 20px rgba(243, 109, 111, 0.34);
+        }
+
+        .challenge-accepted-gif {
+            display: block;
+            width: calc(100% + 32px);
+            max-width: none;
+            margin: -18px -16px 12px;
+            max-height: 160px;
+            object-fit: cover;
+            object-position: center top;
+            border-radius: 15px 15px 0 0;
+            background: #111827;
+        }
+
+        .early-call-notify-gif {
+            display: block;
+            width: calc(100% + 32px);
+            max-width: none;
+            margin: -18px -16px 12px;
+            max-height: 160px;
+            object-fit: cover;
+            object-position: center top;
+            border-radius: 15px 15px 0 0;
+            background: #000;
+        }
+
+        .celebration-overlay {
+            position: relative;
+            inset: auto;
+            width: 100%;
+            max-width: 600px;
+            min-height: 380px;
+            margin: 0 auto;
+            background: rgba(17, 24, 39, 0.78);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 28px 20px;
+            border-radius: 16px;
+        }
+
+        .celebration-card {
+            width: min(560px, 100%);
+            border-radius: 18px;
+            border: 1px solid rgba(255, 255, 255, 0.22);
+            background: #111827;
+            color: #F9FAFB;
+            box-shadow: var(--shadow-soft);
+            overflow: hidden;
+        }
+
+        .celebration-gif {
+            width: 100%;
+            max-height: 110px;
+            object-fit: cover;
+            display: block;
+            background: #0F172A;
+        }
+
+        .celebration-gif--mirrored {
+            transform: scaleX(-1);
+        }
+
+        .celebration-content {
+            padding: 16px 16px 14px;
+            background: #FFF;
+            color: var(--text-primary);
+        }
+
+        .celebration-title {
+            margin: 0;
+            font-size: 1.12rem;
+            letter-spacing: -0.01em;
+            text-align: center;
+            color: var(--text-primary);
+        }
+
+        .celebration-date {
+            margin: 8px 0 0;
+            text-align: center;
+            font-size: 0.84rem;
+            color: var(--text-secondary);
+        }
+
+        .matchup {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+            margin: 12px 0;
+        }
+
+        .competitor {
+            border: 1px solid #E5E7EB;
+            border-radius: 14px;
+            background: #FFF;
+            padding: 12px;
+            text-align: center;
+        }
+
+        .competitor.is-winner {
+            border-color: #B8860B;
+            background: linear-gradient(180deg, rgba(255, 250, 228, 0.98), rgba(255, 233, 160, 0.95));
+            box-shadow:
+                0 0 0 2px rgba(184, 134, 11, 0.28),
+                0 0 24px rgba(212, 175, 55, 0.35),
+                0 10px 24px rgba(184, 134, 11, 0.24);
+            color: #000;
+        }
+
+        .competitor.is-winner .competitor-label,
+        .competitor.is-winner .competitor-position,
+        .competitor.is-winner .competitor-quote {
+            color: #000;
+        }
+
+        .competitor.is-loser {
+            border-color: rgba(239, 68, 68, 0.9);
+            box-shadow:
+                0 0 0 2px rgba(239, 68, 68, 0.34),
+                0 0 18px rgba(239, 68, 68, 0.48),
+                0 10px 24px rgba(239, 68, 68, 0.2);
+        }
+
+        .avatar {
+            width: 46px;
+            height: 46px;
+            margin: 0 auto 8px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 800;
+            color: #FFF;
+        }
+
+        .avatar.creator {
+            background: linear-gradient(160deg, #F36D6F, #E75C60);
+        }
+
+        .avatar.challenger {
+            background: linear-gradient(160deg, #64748B, #334155);
+        }
+
+        .competitor-label {
+            font-size: 0.78rem;
+            font-weight: 700;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+        }
+
+        .celebration-matchup .competitor:not(.is-winner):not(.is-loser) {
+            background: #FFF;
+            border-color: #E5E7EB;
+        }
+
+        .celebration-matchup .competitor-label {
+            color: var(--text-secondary);
+        }
+
+        .competitor-position {
+            margin-top: 6px;
+            font-size: 0.9rem;
+            color: var(--text-primary);
+            line-height: 1.35;
+            word-break: break-word;
+        }
+
+        .celebration-matchup .competitor-position,
+        .celebration-matchup .competitor-quote {
+            color: var(--text-primary);
+        }
+
+        .competitor-quote {
+            margin-top: 8px;
+            font-size: 0.84rem;
+            color: var(--text-secondary);
+            line-height: 1.4;
+            font-style: italic;
+            word-break: break-word;
+        }
+
+        .asset-note {
+            max-width: 420px;
+            margin: 10px auto 0;
+            font-size: 0.8rem;
+            color: #6b7280;
+            line-height: 1.4;
+        }
+
+        .asset-note code {
+            font-size: 0.78em;
+        }
+    </style>
+</head>
+<body>
+    <header class="preview-top">
+        <h1>Modal hero assets — layout preview</h1>
+        <p>
+            Uses your WebP files under <code>assets/gifs/</code> when present. If a file is missing or blocked (<code>file://</code>),
+            the image falls back to the current Giphy URL so layout still matches production.
+        </p>
+        <nav class="preview-nav" aria-label="Jump to preview">
+            <a href="#challenge-accepted">#challenge-accepted-modal</a>
+            <a href="#early-call-notify">#early-call-notify-modal</a>
+            <a href="#celebration">#celebration-modal</a>
+        </nav>
+    </header>
+
+    <section id="challenge-accepted" class="preview-scene" aria-labelledby="lbl-challenge">
+        <div style="width:100%;max-width:440px;">
+            <p id="lbl-challenge" class="preview-label">Challenge accepted</p>
+            <div class="modal-overlay" role="presentation">
+                <div class="modal-card">
+                    <img
+                        class="challenge-accepted-gif"
+                        alt="Challenge accepted hero"
+                        width="380"
+                        height="160"
+                        decoding="async"
+                        data-webp="assets/gifs/challenge-accepted.webp"
+                        data-fallback="https://media2.giphy.com/media/v1.Y2lkPTc5MGI3NjExbW81ano1OWN4Ync3OGI2cDZjajk0ZWxmemF3ZHJ3ZTByNmlodzU4YyZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9Zw/BTe6OassV0iDS/giphy.gif">
+                    <h2 class="modal-title">Challenge Accepted</h2>
+                    <p class="modal-text">Your challenger locked in their position.</p>
+                    <div class="modal-actions">
+                        <button type="button" class="cta" tabindex="-1">Let's Do This!</button>
+                    </div>
+                </div>
+            </div>
+            <p class="asset-note">File: <code>assets/gifs/challenge-accepted.webp</code></p>
+        </div>
+    </section>
+
+    <section id="early-call-notify" class="preview-scene" aria-labelledby="lbl-early">
+        <div style="width:100%;max-width:440px;">
+            <p id="lbl-early" class="preview-label">Early call notify</p>
+            <div class="modal-overlay" role="presentation">
+                <div class="modal-card">
+                    <img
+                        class="early-call-notify-gif"
+                        alt="Early call notify hero"
+                        width="380"
+                        height="160"
+                        decoding="async"
+                        data-webp="assets/gifs/vote.webp"
+                        data-fallback="https://media3.giphy.com/media/v1.Y2lkPTc5MGI3NjExbm80ZnYyM3Q3dTByZHFoc3dmeWJ0ZmYxeTBjbXNtcTNtN2N0NGNiYyZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9Zw/11OQRFijlncwq4/giphy.gif">
+                    <h2 class="modal-title">The bet was called early</h2>
+                    <p class="modal-text">The countdown stopped. You can vote on the outcome now.</p>
+                    <div class="modal-actions">
+                        <button type="button" class="cta" tabindex="-1">Vote now</button>
+                    </div>
+                </div>
+            </div>
+            <p class="asset-note">File: <code>assets/gifs/vote.webp</code></p>
+        </div>
+    </section>
+
+    <section id="celebration" class="preview-scene" aria-labelledby="lbl-celebration">
+        <div style="width:100%;max-width:600px;">
+            <p id="lbl-celebration" class="preview-label">Celebration (sample matchup)</p>
+            <div class="celebration-overlay" role="presentation">
+                <div class="celebration-card">
+                    <img
+                        class="celebration-gif"
+                        alt="Celebration hero"
+                        data-webp="assets/gifs/fireworks.webp"
+                        data-fallback="https://media.giphy.com/media/26tOZ42Mg6pbTUPHW/giphy.gif">
+                    <div class="celebration-content">
+                        <h2 class="celebration-title">Alex wins this round</h2>
+                        <p class="celebration-date">Ended: 5/1/2026</p>
+                        <section class="matchup celebration-matchup" aria-label="Final head to head">
+                            <article class="competitor is-winner">
+                                <div class="avatar creator" aria-hidden="true">A</div>
+                                <div class="competitor-label">Alex</div>
+                                <div class="competitor-position">Lakers by 10+</div>
+                                <div class="competitor-quote">"Called it."</div>
+                            </article>
+                            <article class="competitor is-loser">
+                                <div class="avatar challenger" aria-hidden="true">B</div>
+                                <div class="competitor-label">Blake</div>
+                                <div class="competitor-position">Celtics win outright</div>
+                                <div class="competitor-quote">"No comment."</div>
+                            </article>
+                        </section>
+                        <div class="modal-actions">
+                            <button type="button" class="cta" tabindex="-1">Share results</button>
+                        </div>
+                    </div>
+                    <img
+                        class="celebration-gif celebration-gif--mirrored"
+                        alt=""
+                        aria-hidden="true"
+                        data-webp="assets/gifs/fireworks.webp"
+                        data-fallback="https://media.giphy.com/media/26tOZ42Mg6pbTUPHW/giphy.gif">
+                </div>
+            </div>
+            <p class="asset-note">File: <code>assets/gifs/fireworks.webp</code> (twice: normal + mirrored strip)</p>
+        </div>
+    </section>
+
+    <script>
+        (function () {
+            document.querySelectorAll("img[data-webp]").forEach((img) => {
+                const webp = img.getAttribute("data-webp");
+                const fallback = img.getAttribute("data-fallback");
+                img.src = webp;
+                img.addEventListener("error", function onErr() {
+                    img.removeEventListener("error", onErr);
+                    if (fallback) {
+                        img.src = fallback;
+                    }
+                }, { once: true });
+            });
+        })();
+    </script>
+</body>
+</html>
