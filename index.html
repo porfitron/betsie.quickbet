@@ -1804,6 +1804,9 @@
         }
 
         function funnelStepFromSurface(surface) {
+            if (surface === "start") {
+                return "start";
+            }
             if (surface === "settle") {
                 return "receipt";
             }
@@ -2927,13 +2930,8 @@
                     <div class="item"><span class="icon" aria-hidden="true">2</span>Exchange updates with links in iMessage or WhatsApp.</div>
                     <div class="item"><span class="icon" aria-hidden="true">3</span>Track countdown and settle with bragging rights.</div>
                 </section>
-                <button id="start-bet" class="cta" type="button">Start a quick bet</button>
                 <p class="meta" style="color: #002cfc;">No email or account required!</p>
             `;
-            document.getElementById("start-bet").addEventListener("click", () => {
-                trackCtaClicked("start_bet", "Start a quick bet");
-                void updateUrl("create");
-            });
             openLandingPreviewModal();
         }
 
@@ -3849,7 +3847,11 @@
             document.getElementById("landing-preview-start").addEventListener("click", (event) => {
                 trackCtaClicked("preview_start_bet", event.currentTarget.textContent.trim());
                 closeLandingPreviewModal();
-                void updateUrl("create");
+            });
+            landingPreviewModal.addEventListener("click", (event) => {
+                if (event.target === landingPreviewModal) {
+                    closeLandingPreviewModal();
+                }
             });
             document.getElementById("calendar-icloud").addEventListener("click", (event) => {
                 trackCtaClicked("calendar_icloud", event.currentTarget.textContent.trim());
@@ -4050,6 +4052,9 @@
                 }
             });
             document.addEventListener("keydown", (event) => {
+                if (event.key === "Escape" && !landingPreviewModal.classList.contains("is-hidden")) {
+                    closeLandingPreviewModal();
+                }
                 if (event.key === "Escape" && !calendarModal.classList.contains("is-hidden")) {
                     closeCalendarModal();
                 }
@@ -4083,7 +4088,7 @@
             const effectiveMode = invalidSettleState ? "active" : mode;
             const surface = (() => {
                 if (!effectiveMode && !hasBetData) {
-                    return "create";
+                    return "start";
                 }
                 if (effectiveMode === "create") {
                     return "create";
