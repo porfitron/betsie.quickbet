@@ -86,33 +86,41 @@ function rowToApi(row) {
   if (!row) {
     return null;
   }
-  return {
+  const out = {
     id: row.id,
     created_at: row.created_at,
     updated_at: row.updated_at,
-    mode: row.mode ?? "",
-    t: row.title ?? "",
-    cn: row.creator_name ?? "",
-    chn: row.challenger_name ?? "",
-    p1: row.p1 ?? "",
-    p2: row.p2 ?? "",
-    d: row.deadline ?? "",
-    tt: row.creator_trash ?? "",
-    ct: row.challenger_trash ?? "",
-    w: row.winner ?? "",
-    src: row.source ?? "",
-    cs: row.creator_step ?? "",
-    inv: row.invited ?? "",
-    cr: row.challenger_responded ?? "",
-    hf: row.handoff_flash ?? "",
-    ev: row.early_vote ?? "",
-    ee: row.early_ended_at ?? "",
-    eab: row.early_called_by ?? "",
-    cv: row.creator_vote_choice ?? "",
-    chv: row.challenger_vote_choice ?? "",
-    vr: row.vote_round ?? "",
-    dr: row.draw_reason ?? "",
   };
+  const optionalString = (v) => (v === undefined || v === null ? undefined : String(v));
+  const assign = (key, v) => {
+    const s = optionalString(v);
+    if (s !== undefined && s !== "") {
+      out[key] = s;
+    }
+  };
+  assign("mode", row.mode);
+  assign("t", row.title);
+  assign("cn", row.creator_name);
+  assign("chn", row.challenger_name);
+  assign("p1", row.p1);
+  assign("p2", row.p2);
+  assign("d", row.deadline);
+  assign("tt", row.creator_trash);
+  assign("ct", row.challenger_trash);
+  assign("w", row.winner);
+  assign("src", row.source);
+  assign("cs", row.creator_step);
+  assign("inv", row.invited);
+  assign("cr", row.challenger_responded);
+  assign("hf", row.handoff_flash);
+  assign("ev", row.early_vote);
+  assign("ee", row.early_ended_at);
+  assign("eab", row.early_called_by);
+  assign("cv", row.creator_vote_choice);
+  assign("chv", row.challenger_vote_choice);
+  assign("vr", row.vote_round);
+  assign("dr", row.draw_reason);
+  return out;
 }
 
 async function readJsonObject(request, maxBytes = 32768) {

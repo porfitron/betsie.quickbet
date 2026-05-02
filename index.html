@@ -1107,10 +1107,6 @@
             outline-offset: 2px;
         }
 
-        .share-handoff-copy-hidden {
-            display: none;
-        }
-
         .preview-accept-wrap {
             margin: 12px 0 0;
             text-align: center;
@@ -1387,7 +1383,6 @@
             <div id="share-handoff-summary" class="modal-summary" hidden></div>
             <div class="modal-actions">
                 <button id="share-handoff-primary" class="cta" type="button"></button>
-                <button id="share-handoff-copy" class="ghost share-handoff-copy-hidden" type="button" tabindex="-1" aria-hidden="true"><span class="share-action-label"><svg class="share-action-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M12 3V14M12 3L8.5 6.5M12 3L15.5 6.5" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><rect x="5" y="11" width="14" height="10" rx="2" ry="2" stroke-width="2"/></svg><span>Copy message</span></span></button>
             </div>
             <p id="share-handoff-hint" class="modal-hint" aria-live="polite"></p>
         </div>
@@ -1449,7 +1444,7 @@
         <div class="celebration-card">
             <img
                 class="celebration-gif"
-                src="https://media.giphy.com/media/26tOZ42Mg6pbTUPHW/giphy.gif"
+                data-src="https://media.giphy.com/media/26tOZ42Mg6pbTUPHW/giphy.gif"
                 alt="Confetti celebration animation">
             <div class="celebration-content">
                 <h2 id="celebration-title" class="celebration-title">Result locked in</h2>
@@ -1459,7 +1454,7 @@
             </div>
             <img
                 class="celebration-gif celebration-gif--mirrored"
-                src="https://media.giphy.com/media/26tOZ42Mg6pbTUPHW/giphy.gif"
+                data-src="https://media.giphy.com/media/26tOZ42Mg6pbTUPHW/giphy.gif"
                 alt=""
                 aria-hidden="true">
         </div>
@@ -1480,6 +1475,7 @@
         const shareHandoffState = { role: null, url: "" };
         const voteConfirmState = { choice: "", role: "" };
         let settleShareUrlForModal = "";
+        let isShareHandoffPrimaryInFlight = false;
         const url = new URL(window.location.href);
         const HASH_STATE_VERSION = 1;
         const SHAREABLE_STATE_KEYS = ["mode", "t", "cn", "chn", "p1", "p2", "d", "tt", "ct", "w", "src", "cs", "inv", "cr", "hf", "ev", "ee", "eab", "cv", "chv", "vr", "dr"];
@@ -1663,10 +1659,50 @@
             }
             void updateUrl("settle", {
                 w: String(row.w),
-                dr: row.dr != null && String(row.dr) !== "" ? String(row.dr) : "",
-                vr: row.vr != null && String(row.vr) !== "" ? String(row.vr) : ""
+                dr: row.dr != null && String(row.dr) !== "" ? String(row.dr) : null,
+                vr: row.vr != null && String(row.vr) !== "" ? String(row.vr) : null
             });
             return true;
+        }
+
+        function mergeLiveBetIntoParamsForPersist(targetParams) {
+            const bid = targetParams.get("bid") || "";
+            if (!bid) {
+                return;
+            }
+            const keys = ["mode", "t", "cn", "chn", "p1", "p2", "d", "tt", "ct", "src", "cs", "inv", "cr", "hf", "ev", "ee", "eab", "cv", "chv", "vr", "dr"];
+            const live = {
+                mode,
+                t: title,
+                cn: creatorName,
+                chn: challengerName,
+                p1,
+                p2,
+                d: deadline,
+                tt: trashTalk,
+                ct: challengerTrashTalk,
+                src: source,
+                cs: creatorStep,
+                inv: invited,
+                cr: challengerResponded,
+                hf: handoffFlash,
+                ev: earlyVote,
+                ee: earlyEndedAt,
+                eab: earlyCalledBy,
+                cv: creatorVoteChoice,
+                chv: challengerVoteChoice,
+                vr: voteRound,
+                dr: drawReason
+            };
+            keys.forEach((key) => {
+                if ((targetParams.get(key) || "").trim()) {
+                    return;
+                }
+                const v = live[key];
+                if (v !== undefined && v !== null && String(v).trim() !== "") {
+                    targetParams.set(key, String(v));
+                }
+            });
         }
 
         function shareableParamsToApiBody(p) {
@@ -1695,16 +1731,56 @@
                 applyApiBetRowToParams(row, p);
                 preserveViewerTrackParams(p, explicitUrlParams);
                 p.set("bid", bid);
-                // Preserve explicit URL intent so button transitions are not overridden by stale DB fields.
-                SHAREABLE_STATE_KEYS.forEach((key) => {
-                    if (explicitUrlParams.has(key)) {
-                        p.set(key, explicitUrlParams.get(key) || "");
+                canonicalizeSettledParamsFromApiRow(row, p);
+                const settled = isApiBetRowSettled(row);
+                if (!settled) {
+                    const explicitMode = explicitUrlParams.get("mode") || "";
+                    if (explicitMode === "accept") {
+                        p.set("mode", "accept");
+                    } else if (explicitMode) {
+                        p.set("mode", explicitMode);
                     }
-                });
+                    if (explicitUrlParams.has("src")) {
+                        const v = explicitUrlParams.get("src") || "";
+                        if (v) {
+                            p.set("src", v);
+                        } else {
+                            p.delete("src");
+                        }
+                    }
+                    if (explicitUrlParams.has("cr")) {
+                        const v = explicitUrlParams.get("cr") || "";
+                        if (v) {
+                            p.set("cr", v);
+                        } else {
+                            p.delete("cr");
+                        }
+                    }
+                }
                 if (explicitUrlParams.has("review")) {
                     p.set("review", explicitUrlParams.get("review") || "");
                 }
-                canonicalizeSettledParamsFromApiRow(row, p);
+                // Challenger accept draft lives in the URL until Confirm+send (skipPersist). Re-apply after DB merge
+                // so hydrate does not wipe chn/p2/ct with empty D1 columns before cr=1.
+                if (!settled) {
+                    const crFromUrl = explicitUrlParams.get("cr") || "";
+                    const srcFromUrl = explicitUrlParams.get("src") || "";
+                    const isChallengerDraft =
+                        srcFromUrl === "accept" && crFromUrl !== "1";
+                    if (isChallengerDraft) {
+                        ["chn", "p2", "ct"].forEach((key) => {
+                            if (!explicitUrlParams.has(key)) {
+                                return;
+                            }
+                            const v = explicitUrlParams.get(key) || "";
+                            if (v) {
+                                p.set(key, v);
+                            } else {
+                                p.delete(key);
+                            }
+                        });
+                    }
+                }
                 const mergedDisplay = new URLSearchParams(p.toString());
                 const currentDisplay = new URLSearchParams(new URL(window.location.href).search);
                 if (!paramsEquivalent(mergedDisplay, currentDisplay)) {
@@ -1938,7 +2014,7 @@
             await updateUrl("active", {
                 ...votePayload,
                 cs: "gameon",
-                w: ""
+                w: null
             });
             trackBetsieEvent("betsie_funnel_vote_submitted", { choice, phase: "after_deadline" });
         }
@@ -1985,13 +2061,22 @@
 
         function buildChallengeShareUrl() {
             const shareUrl = new URL(window.location.href);
-            shareUrl.searchParams.set("mode", "accept");
-            shareUrl.searchParams.delete("p2");
-            shareUrl.searchParams.delete("src");
-            shareUrl.searchParams.delete("w");
-            shareUrl.searchParams.delete("cs");
-            shareUrl.searchParams.delete("inv");
-            shareUrl.searchParams.delete("hf");
+            const merged = getMergedParamsFromLocation();
+            const bid = merged.get("bid") || "";
+            if (bid) {
+                shareUrl.search = "";
+                shareUrl.hash = "";
+                shareUrl.searchParams.set("bid", bid);
+            } else {
+                shareUrl.searchParams.set("mode", "accept");
+                shareUrl.searchParams.delete("p2");
+                shareUrl.searchParams.delete("src");
+                shareUrl.searchParams.delete("w");
+                shareUrl.searchParams.delete("cs");
+                shareUrl.searchParams.delete("inv");
+                shareUrl.searchParams.delete("hf");
+                shareUrl.searchParams.delete("review");
+            }
             const inviteUrl = new URL(toCompressedHashUrl(shareUrl.toString()));
             inviteUrl.pathname = "/share/invite/";
             return inviteUrl.toString();
@@ -2004,11 +2089,23 @@
         }
 
         function buildConfirmationShareUrl(challengerAgreesWithCreator) {
+            const merged = getMergedParamsFromLocation();
+            const bid = merged.get("bid") || "";
             const shareUrl = new URL(window.location.href);
-            shareUrl.searchParams.set("mode", "active");
-            shareUrl.searchParams.set("src", "accept");
-            shareUrl.searchParams.set("cr", "1");
-            shareUrl.searchParams.delete("hf");
+            if (bid) {
+                shareUrl.search = "";
+                shareUrl.hash = "";
+                shareUrl.searchParams.set("bid", bid);
+                shareUrl.searchParams.set("mode", "active");
+                shareUrl.searchParams.set("src", "accept");
+                shareUrl.searchParams.set("cr", "1");
+            } else {
+                shareUrl.searchParams.set("mode", "active");
+                shareUrl.searchParams.set("src", "accept");
+                shareUrl.searchParams.set("cr", "1");
+                shareUrl.searchParams.delete("hf");
+                shareUrl.searchParams.delete("review");
+            }
             const confirmUrl = new URL(toCompressedHashUrl(shareUrl.toString()));
             confirmUrl.pathname = challengerAgreesWithCreator ? "/share/confirm-agree/" : "/share/confirm/";
             return confirmUrl.toString();
@@ -2091,15 +2188,28 @@
                 nextParams.set("mode", nextMode);
             }
             Object.entries(data).forEach(([key, value]) => {
-                if (value) {
-                    nextParams.set(key, value);
-                } else {
+                if (value === null) {
                     nextParams.delete(key);
                     if (SHAREABLE_STATE_KEYS.includes(key)) {
                         clearedKeysForApi.push(key);
                     }
+                    return;
                 }
+                if (value === undefined) {
+                    return;
+                }
+                if (value === "") {
+                    // Empty string: remove from URL/query only — do not PATCH null to D1 unless caller passed null.
+                    nextParams.delete(key);
+                    return;
+                }
+                nextParams.set(key, String(value));
             });
+            // skipPersist: see flag below — also skip merging live state into PATCH body.
+            const skipPersist = Boolean(options.skipPersist);
+            if (!skipPersist) {
+                mergeLiveBetIntoParamsForPersist(nextParams);
+            }
             let bid = nextParams.get("bid") || "";
             const body = shareableParamsToApiBody(nextParams);
             clearedKeysForApi.forEach((key) => {
@@ -2113,31 +2223,40 @@
                 nextParams.get("t") &&
                 nextParams.get("d") &&
                 nextParams.get("cn");
-            const skipPersist = Boolean(options.skipPersist);
+            // skipPersist: do not PATCH/POST — used when state must stay client-only (e.g. challenger accept draft)
+            // so shared DB rows do not gain p2/chn/ct before explicit confirm+share (creator polls on p2).
+            const onPersistFailure = typeof options.onPersistFailure === "function" ? options.onPersistFailure : null;
             if (!skipPersist) {
                 try {
                     if (bid) {
-                        await fetch(`/api/bets/${encodeURIComponent(bid)}`, {
+                        const res = await fetch(`/api/bets/${encodeURIComponent(bid)}`, {
                             method: "PATCH",
                             headers: { "Content-Type": "application/json" },
                             body: JSON.stringify(body)
                         });
+                        if (!res.ok) {
+                            throw new Error(`PATCH /api/bets/${encodeURIComponent(bid)} failed (${res.status})`);
+                        }
                     } else if (shouldCreateNewBet) {
                         const res = await fetch("/api/bets", {
                             method: "POST",
                             headers: { "Content-Type": "application/json" },
                             body: JSON.stringify(body)
                         });
-                        if (res.ok) {
-                            const row = await res.json();
-                            if (row && row.id) {
-                                bid = row.id;
-                                nextParams.set("bid", bid);
-                            }
+                        if (!res.ok) {
+                            throw new Error(`POST /api/bets failed (${res.status})`);
+                        }
+                        const row = await res.json();
+                        if (row && row.id) {
+                            bid = row.id;
+                            nextParams.set("bid", bid);
                         }
                     }
-                } catch (_) {
+                } catch (error) {
                     // Offline or API error — still navigate with URL-only state.
+                    if (onPersistFailure) {
+                        onPersistFailure(error);
+                    }
                 }
             }
             const next = new URL(window.location.href);
@@ -2541,6 +2660,12 @@
 
         function closeLandingPreviewModal() {
             landingPreviewModal.classList.add("is-hidden");
+            const creatorNameInput = document.getElementById("creator-name");
+            if (creatorNameInput) {
+                requestAnimationFrame(() => {
+                    creatorNameInput.focus();
+                });
+            }
         }
 
         function closeCalendarModal() {
@@ -2681,6 +2806,15 @@
             const dateEl = document.getElementById("celebration-date");
             const matchupEl = document.getElementById("celebration-matchup");
             const shareButtonEl = document.getElementById("celebration-close");
+            celebrationModal.querySelectorAll(".celebration-gif").forEach((img) => {
+                if (img.getAttribute("src")) {
+                    return;
+                }
+                const lazySrc = img.getAttribute("data-src");
+                if (lazySrc) {
+                    img.setAttribute("src", lazySrc);
+                }
+            });
             titleEl.textContent = settleHeadline;
             dateEl.textContent = betDateLabel ? `Ended: ${betDateLabel}` : "";
             matchupEl.innerHTML = `${creatorCardHtml}${challengerCardHtml}`;
@@ -3014,6 +3148,7 @@
             const defaultDate = new Date(Date.now() + 24 * 3600000).toISOString().slice(0, 16);
             const deadlineFieldValue = deadline ? toDatetimeLocalInputValue(deadline) : defaultDate;
             const minDeadlineValue = nowLocalInputValue();
+            let isCreateSubmitInFlight = false;
             app.innerHTML = `
                 ${renderCreatorBreadcrumb("create")}
                 <h1>Create your bet</h1>
@@ -3049,13 +3184,28 @@
             bindCharCounter("creator-name", "creator-name-count", FIELD_LIMITS.name);
             bindCharCounter("bet-title", "bet-title-count", FIELD_LIMITS.claim);
             bindCharCounter("bet-trash-talk", "bet-trash-talk-count", FIELD_LIMITS.trashTalk);
-            document.getElementById("create-form").addEventListener("submit", (event) => {
+            document.getElementById("create-form").addEventListener("submit", async (event) => {
                 event.preventDefault();
+                if (isCreateSubmitInFlight) {
+                    return;
+                }
+                isCreateSubmitInFlight = true;
                 const form = new FormData(event.currentTarget);
+                const submitButton = event.currentTarget.querySelector('button[type="submit"]');
+                const submitOriginalLabel = submitButton ? submitButton.textContent : "Next";
+                if (submitButton) {
+                    submitButton.disabled = true;
+                    submitButton.textContent = "Saving...";
+                }
                 const deadlineValue = String(form.get("deadline") || "");
                 const parsedDeadline = new Date(deadlineValue);
                 if (!deadlineValue || Number.isNaN(parsedDeadline.getTime()) || parsedDeadline.getTime() < Date.now()) {
                     alert("Please choose a bet end time that is in the future.");
+                    if (submitButton) {
+                        submitButton.disabled = false;
+                        submitButton.textContent = submitOriginalLabel;
+                    }
+                    isCreateSubmitInFlight = false;
                     return;
                 }
                 trackCtaClicked("create_form_next", "Next");
@@ -3065,18 +3215,36 @@
                 const nextCreatorName = cleanFieldText(form.get("creatorName"), FIELD_LIMITS.name);
                 const nextClaim = cleanFieldText(form.get("title"), FIELD_LIMITS.claim);
                 const nextTrashTalk = cleanFieldText(form.get("trashTalk"), FIELD_LIMITS.trashTalk);
-                void updateUrl("active", {
-                    cn: nextCreatorName,
-                    t: nextClaim,
-                    p1: "For",
-                    d: deadlineValue,
-                    tt: nextTrashTalk,
-                    p2: "",
-                    cs: "confirm",
-                    inv: "",
-                    hf: "",
-                    review: "creator"
-                });
+                if (!nextCreatorName || !nextClaim) {
+                    alert("Please enter your name and bet title.");
+                    if (submitButton) {
+                        submitButton.disabled = false;
+                        submitButton.textContent = submitOriginalLabel;
+                    }
+                    isCreateSubmitInFlight = false;
+                    return;
+                }
+                try {
+                    await updateUrl("active", {
+                        cn: nextCreatorName,
+                        t: nextClaim,
+                        p1: "For",
+                        d: deadlineValue,
+                        tt: nextTrashTalk,
+                        cs: "confirm",
+                        review: "creator"
+                    }, {
+                        onPersistFailure: () => {
+                            alert("We could not save this bet online right now. We'll still continue locally, but sharing and syncing may be limited until connection recovers.");
+                        }
+                    });
+                } finally {
+                    if (submitButton) {
+                        submitButton.disabled = false;
+                        submitButton.textContent = submitOriginalLabel;
+                    }
+                    isCreateSubmitInFlight = false;
+                }
             });
             bindCreatorBreadcrumb();
             if (shouldShowFirstRunModal) {
@@ -3247,11 +3415,11 @@
                     const shareTargetUrl = shareContext === "creator_reminder" ? liveReminderShareUrl : shareUrl;
                     await shareCurrentLink(shareTargetUrl, { share_context: shareContext });
                     if (isCreatorView && !hasChallengerAccepted && !hasInvitedChallenger) {
-                        void updateUrl("active", { inv: "1", cs: "invite", hf: "" });
+                        void updateUrl("active", { inv: "1", cs: "invite", hf: null });
                         return;
                     }
                     if (!isCreatorView && !hasChallengerSentConfirmation) {
-                        void updateUrl("active", { src: "accept", cr: "1", hf: "" });
+                        void updateUrl("active", { src: "accept", cr: "1", hf: null });
                     }
                 });
             });
@@ -3420,7 +3588,7 @@
                         }
                         const row = await res.json();
                         const currentParams = getMergedParamsFromLocation();
-                        const nextParams = new URLSearchParams(currentParams.toString());
+                        let nextParams = new URLSearchParams(currentParams.toString());
                         applyApiBetRowToParams(row, nextParams);
                         preserveViewerTrackParams(nextParams, currentParams);
                         preserveChallengerDraftFromLocalParams(currentParams, nextParams);
@@ -3464,7 +3632,7 @@
                                         ? "0"
                                         : "";
                                 if (winnerByVote) {
-                                    void updateUrl("settle", { w: winnerByVote, dr: "" });
+                                    void updateUrl("settle", { w: winnerByVote, dr: null });
                                     return;
                                 }
                             } else {
@@ -3485,7 +3653,7 @@
                                         // If reset fails, keep current state and retry on next poll.
                                     }
                                     alert("Votes did not match. Results disputed - one final re-vote is required.");
-                                    void updateUrl("active", { cv: "", chv: "", w: "", vr: "2", dr: "draw_disagreement" });
+                                    void updateUrl("active", { cv: null, chv: null, w: null, vr: "2", dr: "draw_disagreement" });
                                     return;
                                 }
                                 trackBetsieEvent("betsie_funnel_vote_submitted", {
@@ -3645,6 +3813,8 @@
                     position_mode: agreeWithCreator ? "agree" : "custom",
                     has_trash_talk: form.get("challengerTrashTalk") ? "yes" : "no"
                 });
+                // Challenger accept draft is intentionally not persisted yet: writing p2 to D1 triggers creator-side
+                // "new acceptance" detection (poll compares remote p2). Keep chn/p2/ct in URL until Confirm+send PATCHes.
                 void updateUrl(
                     "active",
                     {
@@ -3652,8 +3822,6 @@
                         p2: nextPosition || title,
                         ct: nextChallengerTrashTalk,
                         src: "accept",
-                        cr: "",
-                        hf: "",
                         review: "challenger"
                     },
                     { skipPersist: true }
@@ -3725,7 +3893,18 @@
                 return "Deadline reached";
             })();
             const settleShareUrl = (() => {
-                const resultUrl = new URL(toCompressedHashUrl(window.location.href));
+                const merged = getMergedParamsFromLocation();
+                const bid = merged.get("bid") || "";
+                const baseHref = bid
+                    ? (() => {
+                          const u = new URL(window.location.href);
+                          u.search = "";
+                          u.hash = "";
+                          u.searchParams.set("bid", bid);
+                          return u.toString();
+                      })()
+                    : window.location.href;
+                const resultUrl = new URL(toCompressedHashUrl(baseHref));
                 if (winner === "3") {
                     resultUrl.pathname = "/share/result-draw-disagreement/";
                 } else if (winner === "0") {
@@ -3903,13 +4082,19 @@
                 }
             });
             document.getElementById("share-handoff-primary").addEventListener("click", async () => {
-                if (!shareHandoffState.url) {
+                if (!shareHandoffState.url || isShareHandoffPrimaryInFlight) {
                     return;
                 }
                 const role = shareHandoffState.role;
                 const handoffUrl = shareHandoffState.url;
                 const primaryBtn = document.getElementById("share-handoff-primary");
                 trackCtaClicked("share_handoff_send", primaryBtn ? primaryBtn.textContent.trim() : "Confirm and send");
+                isShareHandoffPrimaryInFlight = true;
+                const originalPrimaryContent = primaryBtn ? primaryBtn.innerHTML : "";
+                if (primaryBtn) {
+                    primaryBtn.disabled = true;
+                    primaryBtn.innerHTML = shareActionLabel("Sending...");
+                }
                 markHandoffSuppressed(role);
                 try {
                     await shareCurrentLink(handoffUrl, { kind: "invite", share_context: shareHandoffShareContext(role) });
@@ -3918,46 +4103,19 @@
                 } finally {
                     closeShareHandoffModal();
                     removeHandoffFlashFromAddressBar();
+                    isShareHandoffPrimaryInFlight = false;
+                    if (primaryBtn) {
+                        primaryBtn.disabled = false;
+                        primaryBtn.innerHTML = originalPrimaryContent || shareActionLabel("Confirm and send");
+                    }
                 }
                 if (role === "creator") {
-                    await updateUrl("active", { inv: "1", cs: "invite", hf: "" });
+                    await updateUrl("active", { inv: "1", cs: "invite", hf: null });
                 } else if (role === "challenger") {
-                    await updateUrl("active", { src: "accept", cr: "1", hf: "" });
-                }
-            });
-            document.getElementById("share-handoff-copy").addEventListener("click", async () => {
-                if (!shareHandoffState.url) {
-                    return;
-                }
-                const role = shareHandoffState.role;
-                const handoffUrl = shareHandoffState.url;
-                markHandoffSuppressed(role);
-                const shareContext = shareHandoffShareContext(role);
-                const shareText = composeShareText(shareContext);
-                const copyBtn = document.getElementById("share-handoff-copy");
-                trackCtaClicked("share_handoff_copy", copyBtn ? copyBtn.textContent.trim() : "Copy message");
-                if (navigator.clipboard) {
-                    await navigator.clipboard.writeText(`${shareText}\n${handoffUrl}`);
-                    trackBetsieEvent("betsie_funnel_link_shared", { share_method: "clipboard", kind: "invite" });
-                    alert(
-                        role === "creator"
-                            ? "Invite message copied — paste it into your chat with your friend."
-                            : "Confirmation message copied — paste it into your chat with the creator."
-                    );
-                }
-                closeShareHandoffModal();
-                removeHandoffFlashFromAddressBar();
-                if (role === "creator") {
-                    await updateUrl("active", { inv: "1", cs: "invite", hf: "" });
-                } else if (role === "challenger") {
-                    await updateUrl("active", { src: "accept", cr: "1", hf: "" });
+                    await updateUrl("active", { src: "accept", cr: "1", hf: null });
                 }
             });
             shareHandoffModal.addEventListener("click", (event) => {
-                if (event.target === shareHandoffModal) {
-                    closeShareHandoffModal();
-                    return;
-                }
                 const editTrigger = event.target.closest("#share-handoff-edit-link");
                 if (editTrigger) {
                     event.preventDefault();
@@ -4003,7 +4161,7 @@
                     const nextSrc = currentlyChallengerTrack ? "" : "accept";
                     trackCtaClicked("vote_confirm_switch_role", switchTrigger.textContent.trim());
                     closeVoteConfirmModal();
-                    void updateUrl("active", { src: nextSrc, review: "" });
+                    void updateUrl("active", { src: nextSrc || null, review: "" });
                     return;
                 }
                 const editTrigger = event.target.closest("#vote-confirm-edit-link");
@@ -4038,7 +4196,7 @@
                 trackCtaClicked("challenge_accept_game_on", event.currentTarget.textContent.trim());
                 closeChallengeAcceptedModal();
                 // Full navigation + PATCH like other transitions: lands on / with the same bet params as confirm-agree redirect, but Creator track (no src/review).
-                void updateUrl("active", { cs: "gameon", hf: "", src: "", review: "" });
+                void updateUrl("active", { cs: "gameon", hf: null, src: null, review: "" });
             });
             document.getElementById("early-call-notify-vote").addEventListener("click", (event) => {
                 trackCtaClicked("early_call_vote_now", event.currentTarget.textContent.trim());
@@ -4060,9 +4218,6 @@
                 }
                 if (event.key === "Escape" && !freshModal.classList.contains("is-hidden")) {
                     closeFreshModal();
-                }
-                if (event.key === "Escape" && !shareHandoffModal.classList.contains("is-hidden")) {
-                    closeShareHandoffModal();
                 }
                 if (event.key === "Escape" && !earlyEndModal.classList.contains("is-hidden")) {
                     closeEarlyEndModal();
