@@ -27,6 +27,8 @@ Typical variables:
 - `GA4_MEASUREMENT_ID` (if sent server-side)
 - Feature flags for modal notification behavior (optional)
 
+**Public bet feed (`feed.html`):** `GET /api/bets?limit=` returns a **redacted** JSON array (bet text, deadline, outcome, and timestamps only — **no** creator/challenger names or vote/handoff fields). To turn the list endpoint off entirely in an environment, set **`PUBLIC_BET_LIST_DISABLED`** to `1`, `true`, `yes`, or `on`. Single-bet `GET/PATCH /api/bets/:id` behavior is unchanged for the main app.
+
 Typical commands:
 - `wrangler login`
 - `wrangler dev`

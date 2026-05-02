@@ -3,6 +3,11 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <!--
+      CSP (meta): policies combine with HTTP headers — avoid duplicating conflicting CSP on Cloudflare.
+      Inline script/style kept for this single-file app; GA + fonts + jsDelivr explicitly allowed.
+    -->
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; base-uri 'self'; object-src 'none'; upgrade-insecure-requests; script-src 'self' 'unsafe-inline' https://www.googletagmanager.com https://tagmanager.google.com https://www.google-analytics.com https://ssl.google-analytics.com https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: blob: https:; connect-src 'self' https://www.google-analytics.com https://analytics.google.com https://*.google-analytics.com https://*.analytics.google.com https://*.googletagmanager.com https://stats.g.doubleclick.net; worker-src 'self'; manifest-src 'self'; frame-src 'self' https://www.googletagmanager.com">
     <title>Betsie Quick Bet | Bets with your Besties</title>
     <meta name="description" content="Betsie Lite lets you create and share a friendly 1-on-1 bet in seconds.">
     <meta name="keywords" content="betsie, betsie lite, social betting, friendly bets, 1-on-1 bets, prediction challenge, shareable bets, wager app, no account betting, mobile bet app">
@@ -1460,7 +1465,7 @@
         </div>
     </div>
 
-    <script src="https://cdn.jsdelivr.net/npm/lz-string@1.5.0/libs/lz-string.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/lz-string@1.5.0/libs/lz-string.min.js" integrity="sha384-0d+Gr7vM4Drod8E3hXKgciWJSWbjD/opKLLygI9ktiWbuvlDwQLzU46wJ9s5gsp7" crossorigin="anonymous"></script>
     <script>
         const app = document.getElementById("app");
         const landingPreviewModal = document.getElementById("landing-preview-modal");
@@ -2139,11 +2144,12 @@
         }
 
         function escapeHtml(value) {
-            return value
+            return String(value ?? "")
                 .replaceAll("&", "&amp;")
                 .replaceAll("<", "&lt;")
                 .replaceAll(">", "&gt;")
-                .replaceAll('"', "&quot;");
+                .replaceAll('"', "&quot;")
+                .replaceAll("'", "&#39;");
         }
 
         function shareActionLabel(label) {
@@ -2172,6 +2178,8 @@
             html2canvasLoaderPromise = new Promise((resolve, reject) => {
                 const script = document.createElement("script");
                 script.src = "https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js";
+                script.integrity = "sha384-ZZ1pncU3bQe8y31yfZdMFdSpttDoPmOZg2wguVK9almUodir1PghgT0eY7Mrty8H";
+                script.crossOrigin = "anonymous";
                 script.async = true;
                 script.onload = () => {
                     if (typeof window.html2canvas === "function") {
@@ -3763,7 +3771,7 @@
             app.innerHTML = `
                 <div id="settle-receipt-capture">
                     <div class="brand-row"><span class="brand-label">Bet Receipt</span></div>
-                    <h1>${settleHeadline}</h1>
+                    <h1>${escapeHtml(settleHeadline)}</h1>
                     ${betDateLabel ? `<p class="subtitle" style="text-align: center; margin-top: 0; margin-bottom: 2px;">Bet ended: ${escapeHtml(betDateLabel)}</p>` : ""}
                     ${drawDisagreement ? `<p class="subtitle" style="text-align: center; margin-top: 0; margin-bottom: 2px;">Reason: ${escapeHtml(drawReasonLabel)}</p>` : ""}
                     <p class="subtitle" style="text-align: center; margin-top: 4px; margin-bottom: 10px; line-height: 1;"><button id="save-results-pill" class="pill save-results-pill" type="button">${saveImageActionLabel("Download receipt")}</button></p>

@@ -51,6 +51,37 @@ const COL = {
   dr: "draw_reason",
 };
 
+/**
+ * Minimal fields for `GET /api/bets` (public discovery feed).
+ * Omits names, vote payloads, handoff flags, and other operational keys — see `rowToApi`.
+ */
+function rowToPublicFeedListApi(row) {
+  if (!row) {
+    return null;
+  }
+  return {
+    id: row.id,
+    created_at: row.created_at,
+    updated_at: row.updated_at,
+    mode: row.mode ?? "",
+    t: row.title ?? "",
+    p1: row.p1 ?? "",
+    p2: row.p2 ?? "",
+    d: row.deadline ?? "",
+    tt: row.creator_trash ?? "",
+    ct: row.challenger_trash ?? "",
+    w: row.winner ?? "",
+  };
+}
+
+function publicBetListDisabled(env) {
+  const raw = env.PUBLIC_BET_LIST_DISABLED;
+  if (raw === undefined || raw === null || String(raw).trim() === "") {
+    return false;
+  }
+  return ["1", "true", "yes", "on"].includes(String(raw).trim().toLowerCase());
+}
+
 function rowToApi(row) {
   if (!row) {
     return null;
@@ -189,6 +220,26 @@ export async function handleBetRoutes(request, env, url) {
 
     const row = await db.prepare("SELECT * FROM bets WHERE id = ?").bind(betId).first();
     return Response.json(rowToApi(row), { status: 201 });
+  }
+
+  if (method === "GET" && isCollection) {
+    if (publicBetListDisabled(env)) {
+      return Response.json({ error: "Not found" }, { status: 404 });
+    }
+    let limit = Number(url.searchParams.get("limit"));
+    if (!Number.isFinite(limit) || limit < 1) {
+      limit = 10;
+    }
+    limit = Math.min(Math.floor(limit), 50);
+    const { results } = await db
+      .prepare(
+        `SELECT id, created_at, updated_at, mode, title, p1, p2, deadline, creator_trash, challenger_trash, winner
+         FROM bets ORDER BY updated_at DESC LIMIT ?`,
+      )
+      .bind(limit)
+      .all();
+    const rows = Array.isArray(results) ? results : [];
+    return Response.json(rows.map((row) => rowToPublicFeedListApi(row)));
   }
 
   if (!id) {
