@@ -1,110 +1,81 @@
 # Measurement strategy (GA4)
 
-This document describes how Betsie Lite is instrumented for [Google Analytics 4](https://support.google.com/analytics) and how to define **funnels, users, and key milestones** in the GA4 UI. Bets are now database-backed and served via Cloudflare Workers, so event parameters should reference persisted identifiers and role-track state instead of URL-only assumptions.
+Betsie Lite sends a **small set of named events** so you can read the product funnel like a story: **landing → create → invite → accept → live bet → vote → outcome → receipt**. **Funnel milestones** use the prefix **`betsie_funnel_`**; supplementary taps use **`betsie_cta_clicked`** (and everything stays under the Betsie namespace).
 
-## Design constraints
+Events go through one helper that merges **`role`** (`creator` or `challenger`, from the viewer’s link) and **`bet_id`** when the URL has `bid`.
 
-- **Light-account model:** users may still be pseudonymous, but gameplay state is persisted server-side.
-- **Role tracks are explicit:** Creator and Challenger are persisted roles; analytics should include `role_track` where available.
-- **Milestone definitions are yours to pick:** the product emits **granular events**; a few milestones are **derived** from more than one event to avoid a mismatch with product language (“completed,” “share,” etc.).
+## Funnel in plain language
 
-## How events are sent
+1. **Landing** — Marketing home (`step` = `landing`).
+2. **Creator** — Build-flow screens (`step` = `creator`).
+3. **Invite** — Creator/challenger completes a share (`betsie_funnel_link_shared`, `kind` = `invite`).
+4. **Accept** — Challenger on the accept screen (`step` = `accept`).
+5. **Live** — Active bet / countdown (`step` = `live`).
+6. **Vote** — A vote or dispute transition is recorded (`betsie_funnel_vote_submitted`).
+7. **Outcome** — Final result is shown once per bet (`betsie_funnel_outcome_revealed`, deduped in-session).
+8. **Receipt** — Receipt/settle screen (`step` = `receipt`), optional export/share.
 
-All custom events go through a single helper that wraps `gtag("event", name, params)`.
+## Event reference
 
-- If `gtag` is missing, events are no-ops (e.g. blocked scripts).
+### Funnel milestones (`betsie_funnel_*`)
 
-## Event inventory (milestone-relevant)
+| Event | When it fires | Main parameters |
+|--------|----------------|------------------|
+| `betsie_funnel_step_viewed` | Each full-page navigation / boot | `step`: `landing` \| `creator` \| `accept` \| `live` \| `receipt` |
+| `betsie_funnel_creator_bet_saved` | Creator submits the create form | `has_trash_talk` |
+| `betsie_funnel_challenger_joined` | Challenger submits the accept form | `position_mode`, `has_trash_talk` |
+| `betsie_funnel_link_shared` | Share sheet finished or link copied | `share_method`: `native` \| `clipboard`, `kind`: `invite` \| `vote_reminder` \| `receipt` |
+| `betsie_funnel_vote_submitted` | Vote saved, early call, or dispute automation | `choice`, `phase`, optional `round` |
+| `betsie_funnel_outcome_revealed` | First time this browser shows a final outcome for `bet_id` | `outcome` (readable), `outcome_code` |
+| `betsie_funnel_receipt_exported` | Receipt image flow | `export_type`, `result`: `start` \| `success` \| `error` |
 
-| Event | Purpose |
-|--------|---------|
-| `betsie_surface_view` | Fires on each load. Params include `surface` (`landing`, `create`, `accept`, `active`, `settle`, ...), `role_track`, `bet_id`, and lifecycle flags from backend state. Use for “which screen was seen” and high-level funnels. |
-| `betsie_cta` | Primary CTAs, e.g. `cta_id`: `start_first_bet` (from landing), `start_new_bet` (from settle). `location` disambiguates. |
-| `betsie_form_submit` | `form_id`: `create_bet` (creator finished create step), `accept_bet` (challenger submitted). Include `bet_id`, `player_id` (or anonymous surrogate), `role_track`, `has_trash_talk`, and `position_mode` where applicable. |
-| `betsie_vote` | Vote submission and voting actions. Include `bet_id`, `player_id`, `role_track`, `phase`, and `choice` (`creator`, `challenger`, `no_contest`). |
-| `betsie_vote_waiting` | Emitted after a player vote is accepted but result is blocked until all required votes are present. |
-| `betsie_vote_all_submitted` | Emitted when the final required vote is received and result computation becomes eligible. |
-| `betsie_result_revealed` | Emitted when computed outcome is presented to players. Include `bet_id` and `outcome`. |
-| `betsie_modal_notification` | Opponent-action modal lifecycle (`shown`, `cta_click`, `dismissed`) with `bet_id`, `role_track`, and `source_action_type`. |
-| `betsie_settle_pick` | Winner picked from the **settle** view when the outcome is chosen there (less common than voting from `active`). |
-| `betsie_settle_celebration` | Settle outcome celebration modal (e.g. `action` `auto_open`). Supplementary, not a unique “per bet” signal by itself. |
-| `betsie_share` | A share **completed** via `navigator.share` or fallback **clipboard** copy. `share_method`: `native` or `clipboard`; `share_context` when provided. |
-| `betsie_share_intent` | User took a direct share path that records intent before/without a full handoff. |
-| `betsie_share_flow` | Handoff modal path (`flow`: e.g. `creator_handoff_modal`, `challenger_handoff_modal`). |
-| `betsie_share_handoff` | Handoff UI actions, e.g. `primary_share`, `copy_link`, `auto_open`; `role` can be `creator` or `challenger`. |
-| `betsie_creator_step` / `betsie_challenger_step` | Breadcrumb navigation (supplementary; not a substitute for `form_submit`). |
-| `betsie_accept_position` | Agree vs custom on accept screen (UX detail). |
-| `betsie_preview`, `betsie_calendar_*`, `betsie_outbound_*`, `betsie_start_fresh`, `betsie_header_logo` | Supporting and hygiene events; not core funnel counts unless you explicitly want them. |
+### Supplementary
 
-### Implemented stage language reference
+| Event | When it fires | Main parameters |
+|--------|----------------|------------------|
+| `betsie_cta_clicked` | Any tracked button / primary control tap | `cta` (stable id), `label` (visible copy), `value`: **1** (numeric engagement unit for GA4); optional context e.g. **`from_screen`** (`receipt` for **Start new bet** on the settle/receipt screen) |
 
-- **Creator stages:** `Create -> Confirm -> Invite` (tracked with `betsie_creator_step` and URL state).
-- **Challenger stages:** `Accept -> Confirm -> Game On` (tracked with `betsie_challenger_step` and `challenger_responded` state).
-- **CTA labels in-product** (for dashboard annotation consistency): "Start a quick bet", "Next", "Invite challenger", "Send a reminder", "Confirm and send", "Call the bet early", "Share result", "Start new bet".
+### Common parameters (merged automatically)
 
-## Recommended definitions for reporting
+| Parameter | Meaning |
+|-----------|---------|
+| `role` | Who this browser is acting as: `creator` or `challenger`. |
+| `bet_id` | Present when the bet exists in the URL/API (`bid`). |
 
-### Users (creators and challengers)
+### Outcome codes (`outcome_code`)
 
-| Question | Suggested approach |
-|----------|-------------------|
-| “How many users behaved like **creators**?” | **Segment** or **audience:** at least one `betsie_form_submit` with `form_id` = `create_bet` **or** (broader) `betsie_surface_view` with `surface` = `create`. Prefer **form submit** for “serious” creators. |
-| “How many users behaved like **challengers**?” | **Segment** / **audience:** at least one `betsie_form_submit` with `form_id` = `accept_bet` **or** (broader) `betsie_surface_view` with `surface` = `accept`. |
+| Code | Typical meaning |
+|------|-------------------|
+| `no_contest` | No contest |
+| `draw_disagreement` | Draw / disagreement |
+| `both_right` | Same-side bet, both correct |
+| `both_wrong` | Same-side bet, both wrong |
+| `creator_wins` | Creator wins |
+| `challenger_wins` | Challenger wins |
+| `unknown` | Fallback |
 
-**Overlap:** a single device can complete both in different sessions. Report **both segment sizes**; do not assume a partition of “all users” unless you define mutual exclusion rules.
+### Vote `choice` values (representative)
 
-### Bet “started”
+`creator`, `challenger`, `no_contest`, `call_early`, `reset_due_disagreement`, `draw_due_disagreement`, plus historical choices from the confirmation flow.
 
-| Definition | Event(s) | Notes |
-|------------|-----------|--------|
-| **A — Landed in create** | `betsie_surface_view` + `surface` = `create` | Includes any entry to create (e.g. `?mode=create`, bookmarks). **Broadest.** |
-| **B — Clicked the main landing CTA** | `betsie_cta` + `cta_id` = `start_first_bet` + `location` = `landing` | **Narrow;** only from the home “Start your first bet” path. |
+## Reporting tips
 
-Pick **one** as the official “started” metric. Do not sum A and B for a single bet without **deduplication** logic, because B is usually followed by A on the same navigation.
-
-### Bet “created”
-
-- **Count:** `betsie_form_submit` with `form_id` = `create_bet`.
-- **Interpretation:** creator has submitted the create form and the bet state advances in the URL. This is the clearest **“bet exists in the flow”** event.
-
-### Bet “completed” (outcome chosen and revealed)
-
-| Path | Event(s) |
-|------|----------|
-| **Primary** | `betsie_result_revealed` |
-| **Supporting gate checks** | `betsie_vote_waiting` and `betsie_vote_all_submitted` |
-
-Interpretation for same-position bets should come from the final `outcome` value on `betsie_result_revealed` (for example, `both_right` or `both_wrong`) rather than inferring from raw vote choices alone.
-
-**Avoid** using only `betsie_surface_view` settle visits or celebration events as sole completion metrics, since revisits can inflate counts.
-
-### Share button usage
-
-| Question | Suggested event(s) |
-|----------|----------------------|
-| “**Completed** share (OS share or copy)” | `betsie_share` (break down by `share_method`, `share_context`) — **strongest** for “message actually left the UI.” |
-| “Touched **share** UI broadly” | Combine in **Explore** with care: `betsie_share_intent`, `betsie_share_flow`, `betsie_share_handoff` — can **double-count** a single user action across steps; label dashboards clearly. |
-
-**Recommendation for leadership metrics:** use **`betsie_share` event count** (and optional breakdown) as the default “shares that completed.”
-If you want receipt-specific sharing, filter `betsie_share_intent` by `share_context = settle_result` and pair with `betsie_share` completion totals.
+- **Start new bet from receipt:** Event `betsie_cta_clicked` where `cta` = `start_new_bet` and **`from_screen`** = `receipt` (only control wired today; register `from_screen` as a custom dimension).
+- **Simple funnel (Explorations):** `betsie_funnel_step_viewed` broken down by `step`, then add milestone steps: `betsie_funnel_creator_bet_saved` → `betsie_funnel_link_shared` (`kind` = `invite`) → `betsie_funnel_challenger_joined` → `betsie_funnel_vote_submitted` → `betsie_funnel_outcome_revealed` → `betsie_funnel_step_viewed` (`step` = `receipt`).
+- **Per-bet correlation:** Register **`bet_id`** as an event-scoped custom dimension and use it in Explorations (not all GA4 views support joining arbitrary IDs across devices).
+- **Key events:** In GA4 Admin, mark milestones you care about (for example `betsie_funnel_creator_bet_saved`, `betsie_funnel_outcome_revealed`, `betsie_funnel_link_shared`).
 
 ## GA4 admin checklist
 
-1. **Property:** confirm traffic appears under measurement ID `G-3X6CJW5LPY`.
-2. **Custom dimensions (event-scoped):** in **Admin → Data display → Custom definitions**, register parameters you filter on often, e.g. `bet_id`, `player_id` (or anonymous surrogate), `role_track`, `surface`, `form_id`, `cta_id`, `location`, `phase`, `choice`, `outcome`, `share_method`, `share_context`, `flow`, `action`, `source_action_type`. New definitions apply **going forward**; allow **24–48 hours** for stable reporting.
-3. **Key events (optional):** mark milestones like `betsie_form_submit` and `betsie_share` if the team wants them in standard conversion-style reports.
-4. **Explorations:** use **Funnel** or **Free form** with the definitions above; **Real-time** helps validate right after a code deploy.
+1. **Property:** measurement ID `G-P2NCT6LW4D`.
+2. **Custom dimensions (event-scoped):** register `step`, `cta`, `label`, `from_screen`, `kind`, `share_method`, `choice`, `phase`, `outcome`, `outcome_code`, `bet_id`, `role`, `has_trash_talk`, `position_mode`, `export_type`, `result`, `round` as needed for your dashboards. Register **`value`** only if you use GA’s metric-on-parameter mapping for `betsie_cta_clicked`.
+3. **Real-time:** After deploy, confirm events appear while walking through creator → challenger → settle.
 
-## Gaps and optional product follow-ups
+## Representative `cta` ids (`betsie_cta_clicked`)
 
-- Ensure all voting implementations emit explicit waiting and completion gate events so settlement timing is auditable.
-- Ensure modal notification lifecycle is consistently instrumented for both role tracks.
-- “Started” may still be split between **`betsie_cta` and `betsie_surface_view`**; align definitions to avoid double-counting.
+`start_bet`, `preview_start_bet`, `start_new_bet`, `open_menu`, `fresh_confirm`, `fresh_cancel`, `calendar_google`, `calendar_icloud`, `calendar_ics_download`, `calendar_cancel`, `creator_nav_create`, `creator_nav_confirm`, `creator_nav_invite`, `challenger_nav_confirm`, `create_form_next`, `accept_form_next`, `accept_position_agree`, `accept_position_custom`, `share_bet_link`, `share_handoff_send`, `share_handoff_copy`, `share_handoff_edit`, `send_vote_reminder`, `preview_accept_screen`, `call_bet_early`, `add_to_calendar`, `vote_pick_creator`, `vote_pick_challenger`, `vote_pick_no_contest`, `vote_confirm_send`, `vote_confirm_cancel`, `vote_confirm_switch_role`, `vote_confirm_edit`, `early_end_confirm`, `early_end_cancel`, `challenge_accept_game_on`, `early_call_vote_now`, `celebration_share_results`, `receipt_share`, `receipt_download`, `app_promo_download`.
 
 ## Related
 
-- `MD/README.md` — product and technical context for Betsie Lite
-- `MD/PRD.md` — product requirements
-- `MD/DESIGN.md` — visual design
-- `MD/SERVER_SETUP.md` — Cloudflare Worker setup and operations
-- `MD/DATABASE_SCHEMA.md` — backend data model and constraints
+- `MD/README.md` — product context  
+- `MD/DATABASE_SCHEMA.md` — persisted bet model  

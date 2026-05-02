@@ -38,14 +38,14 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Funnel+Display:wght@700&display=swap" rel="stylesheet">
     <!-- Google tag (gtag.js) -->
-    <script async src="https://www.googletagmanager.com/gtag/js?id=G-3X6CJW5LPY"></script>
+    <script async src="https://www.googletagmanager.com/gtag/js?id=G-P2NCT6LW4D"></script>
     <script>
         window.dataLayer = window.dataLayer || [];
         function gtag() {
             dataLayer.push(arguments);
         }
         gtag("js", new Date());
-        gtag("config", "G-3X6CJW5LPY");
+        gtag("config", "G-P2NCT6LW4D");
     </script>
     <script>
         if (window.location.protocol === "http:" && window.location.hostname !== "localhost" && window.location.hostname !== "127.0.0.1") {
@@ -1751,6 +1751,46 @@
             return getMergedParamsFromLocation().get("bid") || "";
         }
 
+        function analyticsParticipantRole() {
+            return (getMergedParamsFromLocation().get("src") || "") === "accept" ? "challenger" : "creator";
+        }
+
+        function analyticsBaseParams() {
+            const bid = currentBidFromLocation();
+            const base = { role: analyticsParticipantRole() };
+            if (bid) {
+                base.bet_id = bid;
+            }
+            return base;
+        }
+
+        function shareLinkKindFromContext(shareContext) {
+            const c = String(shareContext || "");
+            if (c === "settle_result") {
+                return "receipt";
+            }
+            if (c.includes("vote_nudge")) {
+                return "vote_reminder";
+            }
+            return "invite";
+        }
+
+        function funnelStepFromSurface(surface) {
+            if (surface === "settle") {
+                return "receipt";
+            }
+            if (surface === "active") {
+                return "live";
+            }
+            if (surface === "create") {
+                return "creator";
+            }
+            if (surface === "accept") {
+                return "accept";
+            }
+            return "landing";
+        }
+
         function markHandoffSuppressed(role) {
             if (!role) {
                 return;
@@ -1869,6 +1909,7 @@
                 cs: "gameon",
                 w: ""
             });
+            trackBetsieEvent("betsie_funnel_vote_submitted", { choice, phase: "after_deadline" });
         }
 
         async function ensureDbBackedBidForShare() {
@@ -1964,7 +2005,6 @@
             const viewerIsCreator = (params.get("src") || "") !== "accept";
             const shareContext = viewerIsCreator ? "vote_nudge_creator" : "vote_nudge_challenger";
             const opponentVoteUrl = buildOpponentVoteNudgeUrl();
-            trackBetsieEvent("betsie_share_intent", { share_context: shareContext });
             try {
                 await shareCurrentLink(opponentVoteUrl, { share_context: shareContext });
             } catch (_) {
@@ -1973,8 +2013,38 @@
         }
 
         function trackBetsieEvent(name, params) {
-            if (typeof gtag === "function") {
-                gtag("event", name, params || {});
+            if (typeof gtag !== "function") {
+                return;
+            }
+            gtag("event", name, { ...analyticsBaseParams(), ...(params || {}) });
+        }
+
+        function trackCtaClicked(cta, label, extra) {
+            trackBetsieEvent("betsie_cta_clicked", {
+                cta: String(cta || ""),
+                label: String(label || ""),
+                value: 1,
+                ...(extra && typeof extra === "object" ? extra : {})
+            });
+        }
+
+        function maybeTrackOutcomeRevealed(outcomeCode, outcomeLabel) {
+            const bid = currentBidFromLocation();
+            if (!bid || !outcomeCode) {
+                return;
+            }
+            try {
+                const key = `betsieGaOutcome:${bid}`;
+                if (sessionStorage.getItem(key)) {
+                    return;
+                }
+                sessionStorage.setItem(key, "1");
+                trackBetsieEvent("betsie_funnel_outcome_revealed", {
+                    outcome: outcomeLabel,
+                    outcome_code: outcomeCode
+                });
+            } catch (_) {
+                // Ignore storage failures.
             }
         }
 
@@ -2796,10 +2866,11 @@
                 text: shareText,
                 url: normalizedShareUrl
             };
+            const kind = analytics.kind || shareLinkKindFromContext(analytics.share_context);
             try {
                 if (navigator.share) {
                     await navigator.share(shareData);
-                    trackBetsieEvent("betsie_share", { share_method: "native", ...analytics });
+                    trackBetsieEvent("betsie_funnel_link_shared", { share_method: "native", kind });
                     return;
                 }
             } catch (error) {
@@ -2807,7 +2878,7 @@
             }
             if (navigator.clipboard) {
                 await navigator.clipboard.writeText(`${shareText}\n${normalizedShareUrl}`);
-                trackBetsieEvent("betsie_share", { share_method: "clipboard", ...analytics });
+                trackBetsieEvent("betsie_funnel_link_shared", { share_method: "clipboard", kind });
                 alert("This message has been copied. For your friend to get the bet, you need to paste it into a chat or email message to them.");
             }
         }
@@ -2825,7 +2896,7 @@
                 <p class="meta" style="color: #002cfc;">No email or account required!</p>
             `;
             document.getElementById("start-bet").addEventListener("click", () => {
-                trackBetsieEvent("betsie_cta", { cta_id: "start_first_bet", location: "landing" });
+                trackCtaClicked("start_bet", "Start a quick bet");
                 void updateUrl("create");
             });
             openLandingPreviewModal();
@@ -2862,7 +2933,7 @@
                 node.addEventListener("click", (event) => {
                     const nextStep = event.currentTarget.getAttribute("data-creator-step");
                     if (nextStep === "create") {
-                        trackBetsieEvent("betsie_creator_step", { step: "create", source: "breadcrumb" });
+                        trackCtaClicked("creator_nav_create", "Create");
                         void updateUrl("create");
                         return;
                     }
@@ -2872,7 +2943,11 @@
                     if (nextStep === "invite" && invited !== "1") {
                         return;
                     }
-                    trackBetsieEvent("betsie_creator_step", { step: nextStep, source: "breadcrumb" });
+                    if (nextStep === "confirm") {
+                        trackCtaClicked("creator_nav_confirm", "Confirm");
+                    } else if (nextStep === "invite") {
+                        trackCtaClicked("creator_nav_invite", "Invite");
+                    }
                     void updateUrl("active", { cs: nextStep, inv: invited });
                 });
             });
@@ -2895,7 +2970,7 @@
                 node.addEventListener("click", (event) => {
                     const nextStep = event.currentTarget.getAttribute("data-challenger-step");
                     if (nextStep === "confirm") {
-                        trackBetsieEvent("betsie_challenger_step", { step: "confirm", source: "breadcrumb" });
+                        trackCtaClicked("challenger_nav_confirm", "Confirm");
                         void updateUrl("active", { src: "accept", cr: challengerResponded });
                     }
                 });
@@ -2950,7 +3025,10 @@
                     alert("Please choose a bet end time that is in the future.");
                     return;
                 }
-                trackBetsieEvent("betsie_form_submit", { form_id: "create_bet", has_trash_talk: form.get("trashTalk") ? "yes" : "no" });
+                trackCtaClicked("create_form_next", "Next");
+                trackBetsieEvent("betsie_funnel_creator_bet_saved", {
+                    has_trash_talk: form.get("trashTalk") ? "yes" : "no"
+                });
                 const nextCreatorName = cleanFieldText(form.get("creatorName"), FIELD_LIMITS.name);
                 const nextClaim = cleanFieldText(form.get("title"), FIELD_LIMITS.claim);
                 const nextTrashTalk = cleanFieldText(form.get("trashTalk"), FIELD_LIMITS.trashTalk);
@@ -2970,7 +3048,6 @@
             bindCreatorBreadcrumb();
             if (shouldShowFirstRunModal) {
                 requestAnimationFrame(() => {
-                    trackBetsieEvent("betsie_modal", { modal_id: "landing_preview", action: "auto_open_create_default" });
                     openLandingPreviewModal();
                 });
             }
@@ -3092,18 +3169,19 @@
                     : ""}
                 <div class="banner"><a id="betsie-app-promo" href="https://betsie.app/download" target="_blank" rel="noopener noreferrer">Unlock history, streaks, and leaderboard with our mobile app.</a></div>
             `;
-            const promoLink = document.getElementById("betsie-app-promo");
-            if (promoLink) {
-                promoLink.addEventListener("click", () => {
-                    trackBetsieEvent("betsie_outbound_click", { link_id: "app_download_promo", destination: "betsie_app_download" });
+            const promoLinkActive = document.getElementById("betsie-app-promo");
+            if (promoLinkActive) {
+                promoLinkActive.addEventListener("click", () => {
+                    trackCtaClicked("app_promo_download", promoLinkActive.textContent.trim());
                 });
             }
-            if (document.getElementById("share-link")) {
-                document.getElementById("share-link").addEventListener("click", async (e) => {
+            document.querySelectorAll("#share-link").forEach((shareBtn) => {
+                shareBtn.addEventListener("click", async (e) => {
                     e.preventDefault();
                     if (e.currentTarget.getAttribute("aria-disabled") === "true") {
                         return;
                     }
+                    trackCtaClicked("share_bet_link", e.currentTarget.textContent.trim());
                     await ensureDbBackedBidForShare();
                     const liveChallengeShareUrl = buildChallengeShareUrl();
                     const liveReminderShareUrl = buildReminderShareUrl();
@@ -3114,12 +3192,10 @@
                     const showCreatorHandoff = isCreatorView && !hasChallengerAccepted && !hasInvitedChallenger;
                     const showChallengerHandoff = acceptedFromChallenger && !hasChallengerSentConfirmation;
                     if (showCreatorHandoff) {
-                        trackBetsieEvent("betsie_share_flow", { flow: "creator_handoff_modal" });
                         openShareHandoffModal("creator", shareUrl, creatorName, challengerName);
                         return;
                     }
                     if (showChallengerHandoff) {
-                        trackBetsieEvent("betsie_share_flow", { flow: "challenger_handoff_modal" });
                         openShareHandoffModal("challenger", shareUrl, creatorName, challengerName);
                         return;
                     }
@@ -3136,57 +3212,55 @@
                         return "creator_invite_direct";
                     })();
                     const shareTargetUrl = shareContext === "creator_reminder" ? liveReminderShareUrl : shareUrl;
-                    trackBetsieEvent("betsie_share_intent", { share_context: shareContext });
                     await shareCurrentLink(shareTargetUrl, { share_context: shareContext });
                     if (isCreatorView && !hasChallengerAccepted && !hasInvitedChallenger) {
                         void updateUrl("active", { inv: "1", cs: "invite", hf: "" });
                         return;
                     }
                     if (!isCreatorView && !hasChallengerSentConfirmation) {
-                        trackBetsieEvent("betsie_challenger_step", { step: "respond", source: "share_button" });
                         void updateUrl("active", { src: "accept", cr: "1", hf: "" });
                     }
                 });
-            }
+            });
             const voteReminderButton = document.getElementById("send-vote-reminder");
             if (voteReminderButton) {
                 voteReminderButton.addEventListener("click", async () => {
-                    trackBetsieEvent("betsie_share_intent", { share_context: "vote_nudge_reminder_button" });
+                    trackCtaClicked("send_vote_reminder", voteReminderButton.textContent.trim());
                     await shareVoteNudgeToOpponent();
                 });
             }
             if (!p2 && !votingPeriod && document.getElementById("accept-preview")) {
                 document.getElementById("accept-preview").addEventListener("click", (event) => {
                     event.preventDefault();
-                    trackBetsieEvent("betsie_preview", { target: "challenger_accept_link" });
+                    trackCtaClicked("preview_accept_screen", "Preview what they'll see");
                     void updateUrl("accept");
                 });
             }
             if (hasChallengerAccepted) {
                 document.getElementById("call-bet-early-cta").addEventListener("click", () => {
-                    trackBetsieEvent("betsie_vote", { choice: "call_early_prompt", phase: "countdown" });
+                    trackCtaClicked("call_bet_early", "Call the bet early");
                     openEarlyEndModal();
                 });
             }
             const addCalendarPill = document.getElementById("add-calendar-pill");
             if (addCalendarPill) {
                 addCalendarPill.addEventListener("click", () => {
-                    trackBetsieEvent("betsie_calendar_modal", { action: "open" });
+                    trackCtaClicked("add_to_calendar", addCalendarPill.textContent.trim());
                     openCalendarModal();
                 });
             }
-            document.getElementById("creator-won").addEventListener("click", () => {
-                trackBetsieEvent("betsie_vote", { choice: "creator", phase: "after_deadline" });
+            document.getElementById("creator-won").addEventListener("click", (event) => {
+                trackCtaClicked("vote_pick_creator", event.currentTarget.textContent.trim());
                 openVoteConfirmModal("creator", isCreatorView ? "creator" : "challenger");
             });
-            document.getElementById("challenger-won").addEventListener("click", () => {
-                trackBetsieEvent("betsie_vote", { choice: "challenger", phase: "after_deadline" });
+            document.getElementById("challenger-won").addEventListener("click", (event) => {
+                trackCtaClicked("vote_pick_challenger", event.currentTarget.textContent.trim());
                 openVoteConfirmModal("challenger", isCreatorView ? "creator" : "challenger");
             });
             const noContestLink = document.getElementById("no-contest-link");
             if (noContestLink) {
-                noContestLink.addEventListener("click", () => {
-                    trackBetsieEvent("betsie_vote", { choice: "no_contest", phase: "after_deadline" });
+                noContestLink.addEventListener("click", (event) => {
+                    trackCtaClicked("vote_pick_no_contest", event.currentTarget.textContent.trim());
                     openVoteConfirmModal("no_contest", isCreatorView ? "creator" : "challenger");
                 });
             }
@@ -3211,13 +3285,11 @@
             if (shouldAutoCreatorReview) {
                 removeReviewRequestFromAddressBar();
                 requestAnimationFrame(() => {
-                    trackBetsieEvent("betsie_share_handoff", { action: "auto_open", role: "creator" });
                     openShareHandoffModal("creator", challengeShareUrl, creatorName, challengerName);
                 });
             } else if (shouldAutoChallengerReview) {
                 removeReviewRequestFromAddressBar();
                 requestAnimationFrame(() => {
-                    trackBetsieEvent("betsie_share_handoff", { action: "auto_open", role: "challenger" });
                     openShareHandoffModal("challenger", confirmationShareUrl, creatorName, challengerName);
                 });
             }
@@ -3239,10 +3311,8 @@
                     removeHandoffFlashFromAddressBar();
                     requestAnimationFrame(() => {
                         if (shouldAutoCreatorHandoff) {
-                            trackBetsieEvent("betsie_share_handoff", { action: "auto_open", role: "creator" });
                             openShareHandoffModal("creator", challengeShareUrl, creatorName, challengerName);
                         } else if (shouldAutoChallengerHandoff) {
-                            trackBetsieEvent("betsie_share_handoff", { action: "auto_open", role: "challenger" });
                             openShareHandoffModal("challenger", confirmationShareUrl, creatorName, challengerName);
                         }
                     });
@@ -3257,10 +3327,9 @@
                 }
                 document.getElementById("creator-won").classList.toggle("is-hidden", !isVotingPeriod);
                 document.getElementById("challenger-won").classList.toggle("is-hidden", !isVotingPeriod);
-                const shareLinkEl = document.getElementById("share-link");
-                if (shareLinkEl) {
+                document.querySelectorAll("#share-link").forEach((shareLinkEl) => {
                     shareLinkEl.classList.toggle("is-hidden", isVotingPeriod);
-                }
+                });
                 if (hasChallengerAccepted) {
                     const callEarlyEl = document.getElementById("call-bet-early-cta");
                     if (callEarlyEl) {
@@ -3293,11 +3362,6 @@
             const pendingVoteConfirmDraft = consumeVoteConfirmDraftForCurrentBet();
             if (pendingVoteConfirmDraft && votingPeriod) {
                 requestAnimationFrame(() => {
-                    trackBetsieEvent("betsie_modal", {
-                        modal_id: "vote_confirm",
-                        action: "auto_open_after_switch",
-                        choice: pendingVoteConfirmDraft
-                    });
                     openVoteConfirmModal(pendingVoteConfirmDraft, isCreatorView ? "creator" : "challenger");
                 });
             }
@@ -3373,7 +3437,11 @@
                             } else {
                                 const currentVoteRound = Math.max(1, Number.parseInt(nextParams.get("vr") || "1", 10) || 1);
                                 if (currentVoteRound < MAX_VOTE_ROUNDS) {
-                                    trackBetsieEvent("betsie_vote", { choice: "reset_due_disagreement", phase: "after_deadline", round: String(currentVoteRound) });
+                                    trackBetsieEvent("betsie_funnel_vote_submitted", {
+                                        choice: "reset_due_disagreement",
+                                        phase: "after_deadline",
+                                        round: String(currentVoteRound)
+                                    });
                                     try {
                                         await fetch(`/api/bets/${encodeURIComponent(bid)}`, {
                                             method: "PATCH",
@@ -3387,7 +3455,11 @@
                                     void updateUrl("active", { cv: "", chv: "", w: "", vr: "2", dr: "draw_disagreement" });
                                     return;
                                 }
-                                trackBetsieEvent("betsie_vote", { choice: "draw_due_disagreement", phase: "after_deadline", round: String(currentVoteRound) });
+                                trackBetsieEvent("betsie_funnel_vote_submitted", {
+                                    choice: "draw_due_disagreement",
+                                    phase: "after_deadline",
+                                    round: String(currentVoteRound)
+                                });
                                 try {
                                     await fetch(`/api/bets/${encodeURIComponent(bid)}`, {
                                         method: "PATCH",
@@ -3403,7 +3475,6 @@
                         }
 
                         if (isNewAcceptedPosition && isCreatorView && flowStep === "invite") {
-                            trackBetsieEvent("betsie_modal", { modal_id: "challenge_accepted", action: "auto_open" });
                             openChallengeAcceptedModal();
                             return;
                         }
@@ -3420,11 +3491,6 @@
                                 earlyNotifyTitle = "Challenger calls it early";
                             }
                             if (showEarlyNotify) {
-                                trackBetsieEvent("betsie_modal", {
-                                    modal_id: "early_call_notify",
-                                    action: "auto_open",
-                                    eab: eabVal
-                                });
                                 openEarlyCallNotifyModal(earlyNotifyTitle);
                                 return;
                             }
@@ -3526,11 +3592,11 @@
             }
 
             agreeOption.addEventListener("click", () => {
-                trackBetsieEvent("betsie_accept_position", { mode: "agree" });
+                trackCtaClicked("accept_position_agree", agreeWithCreatorLabel);
                 setMode(true);
             });
             customOption.addEventListener("click", () => {
-                trackBetsieEvent("betsie_accept_position", { mode: "custom" });
+                trackCtaClicked("accept_position_custom", "Make a different call");
                 setMode(false);
             });
             document.getElementById("accept-form").addEventListener("submit", (event) => {
@@ -3541,12 +3607,11 @@
                 const nextChallengerTrashTalk = cleanFieldText(form.get("challengerTrashTalk"), FIELD_LIMITS.trashTalk);
                 const position = String(nextPosition || "").trim();
                 const agreeWithCreator = position === String(title).trim();
-                trackBetsieEvent("betsie_form_submit", {
-                    form_id: "accept_bet",
+                trackCtaClicked("accept_form_next", "Next");
+                trackBetsieEvent("betsie_funnel_challenger_joined", {
                     position_mode: agreeWithCreator ? "agree" : "custom",
                     has_trash_talk: form.get("challengerTrashTalk") ? "yes" : "no"
                 });
-                trackBetsieEvent("betsie_challenger_step", { step: "accept_submitted", source: "form_submit" });
                 void updateUrl(
                     "active",
                     {
@@ -3644,6 +3709,30 @@
                 return resultUrl.toString();
             })();
             settleShareUrlForModal = settleShareUrl;
+            const outcomeAnalytics = (() => {
+                if (noContest) {
+                    return { code: "no_contest", label: "No contest" };
+                }
+                if (drawDisagreement) {
+                    return { code: "draw_disagreement", label: "Draw — disagreement" };
+                }
+                if (samePosition && winner === "1") {
+                    return { code: "both_right", label: "Both win" };
+                }
+                if (samePosition && winner === "2") {
+                    return { code: "both_wrong", label: "Both lose" };
+                }
+                if (winner === "1") {
+                    return { code: "creator_wins", label: name ? `${name} wins` : "Creator wins" };
+                }
+                if (winner === "2") {
+                    return { code: "challenger_wins", label: name ? `${name} wins` : "Challenger wins" };
+                }
+                return { code: "unknown", label: settleHeadline };
+            })();
+            if (winner) {
+                maybeTrackOutcomeRevealed(outcomeAnalytics.code, outcomeAnalytics.label);
+            }
             app.innerHTML = `
                 <div id="settle-receipt-capture">
                     <div class="brand-row"><span class="brand-label">Bet Receipt</span></div>
@@ -3660,28 +3749,29 @@
                 <button id="new-bet" class="ghost" type="button">Start new bet</button>
                 <div class="banner"><a id="betsie-app-promo" href="https://betsie.app/download" target="_blank" rel="noopener noreferrer">Unlock history, streaks, and leaderboard with our mobile app.</a></div>
             `;
-            const promoLink = document.getElementById("betsie-app-promo");
-            if (promoLink) {
-                promoLink.addEventListener("click", () => {
-                    trackBetsieEvent("betsie_outbound_click", { link_id: "app_download_promo", destination: "betsie_app_download" });
+            const promoLinkSettle = document.getElementById("betsie-app-promo");
+            if (promoLinkSettle) {
+                promoLinkSettle.addEventListener("click", () => {
+                    trackCtaClicked("app_promo_download", promoLinkSettle.textContent.trim());
                 });
             }
-            document.getElementById("share-result").addEventListener("click", () => {
-                trackBetsieEvent("betsie_share_intent", { share_context: "settle_result" });
+            document.getElementById("share-result").addEventListener("click", (event) => {
+                trackCtaClicked("receipt_share", event.currentTarget.textContent.trim());
                 void shareCurrentLink(settleShareUrl, { share_context: "settle_result" });
             });
             const saveResultsPill = document.getElementById("save-results-pill");
             if (saveResultsPill) {
                 saveResultsPill.addEventListener("click", async () => {
                     const originalLabel = saveImageActionLabel("Download receipt");
+                    trackCtaClicked("receipt_download", originalLabel);
                     try {
                         saveResultsPill.disabled = true;
                         saveResultsPill.innerHTML = saveImageActionLabel("Saving image...");
-                        trackBetsieEvent("betsie_receipt_export", { export_type: "image", action: "start" });
+                        trackBetsieEvent("betsie_funnel_receipt_exported", { export_type: "image", result: "start" });
                         await saveReceiptAsImage();
-                        trackBetsieEvent("betsie_receipt_export", { export_type: "image", action: "success" });
+                        trackBetsieEvent("betsie_funnel_receipt_exported", { export_type: "image", result: "success" });
                     } catch (error) {
-                        trackBetsieEvent("betsie_receipt_export", { export_type: "image", action: "error" });
+                        trackBetsieEvent("betsie_funnel_receipt_exported", { export_type: "image", result: "error" });
                         alert("Could not save image right now. Please try again.");
                     } finally {
                         saveResultsPill.disabled = false;
@@ -3689,15 +3779,14 @@
                     }
                 });
             }
-            document.getElementById("new-bet").addEventListener("click", () => {
-                trackBetsieEvent("betsie_cta", { cta_id: "start_new_bet", location: "settle" });
+            document.getElementById("new-bet").addEventListener("click", (event) => {
+                trackCtaClicked("start_new_bet", event.currentTarget.textContent.trim(), { from_screen: "receipt" });
                 const next = new URL(window.location.href);
                 next.search = "mode=create";
                 next.hash = "";
                 window.open(next.toString(), "_blank", "noopener");
             });
             if (winner) {
-                trackBetsieEvent("betsie_settle_celebration", { action: "auto_open" });
                 requestAnimationFrame(() => {
                     openCelebrationModal({
                         settleHeadline,
@@ -3717,28 +3806,28 @@
         })();
 
         betsieBoot.then(() => {
-            document.getElementById("calendar-google").addEventListener("click", () => {
-                trackBetsieEvent("betsie_calendar_export", { calendar_provider: "google_calendar" });
+            document.getElementById("calendar-google").addEventListener("click", (event) => {
+                trackCtaClicked("calendar_google", event.currentTarget.textContent.trim());
                 openGoogleCalendar();
                 closeCalendarModal();
             });
-            document.getElementById("landing-preview-start").addEventListener("click", () => {
-                trackBetsieEvent("betsie_cta", { cta_id: "landing_preview_start_bet", location: "landing_preview_modal" });
+            document.getElementById("landing-preview-start").addEventListener("click", (event) => {
+                trackCtaClicked("preview_start_bet", event.currentTarget.textContent.trim());
                 closeLandingPreviewModal();
                 void updateUrl("create");
             });
-            document.getElementById("calendar-icloud").addEventListener("click", () => {
-                trackBetsieEvent("betsie_calendar_export", { calendar_provider: "icloud_ics" });
+            document.getElementById("calendar-icloud").addEventListener("click", (event) => {
+                trackCtaClicked("calendar_icloud", event.currentTarget.textContent.trim());
                 createCalendarFile("betsie-deadline-apple.ics");
                 closeCalendarModal();
             });
-            document.getElementById("calendar-ics").addEventListener("click", () => {
-                trackBetsieEvent("betsie_calendar_export", { calendar_provider: "ics_download" });
+            document.getElementById("calendar-ics").addEventListener("click", (event) => {
+                trackCtaClicked("calendar_ics_download", event.currentTarget.textContent.trim());
                 createCalendarFile();
                 closeCalendarModal();
             });
-            document.getElementById("calendar-cancel").addEventListener("click", () => {
-                trackBetsieEvent("betsie_calendar_modal", { action: "cancel" });
+            document.getElementById("calendar-cancel").addEventListener("click", (event) => {
+                trackCtaClicked("calendar_cancel", event.currentTarget.textContent.trim());
                 closeCalendarModal();
             });
             calendarModal.addEventListener("click", (event) => {
@@ -3747,15 +3836,15 @@
                 }
             });
             document.getElementById("logo-button").addEventListener("click", () => {
-                trackBetsieEvent("betsie_header_logo", { action: "open_start_fresh" });
+                trackCtaClicked("open_menu", "Logo");
                 openFreshModal();
             });
-            document.getElementById("fresh-cancel").addEventListener("click", () => {
-                trackBetsieEvent("betsie_start_fresh", { action: "cancel" });
+            document.getElementById("fresh-cancel").addEventListener("click", (event) => {
+                trackCtaClicked("fresh_cancel", event.currentTarget.textContent.trim());
                 closeFreshModal();
             });
-            document.getElementById("fresh-confirm").addEventListener("click", () => {
-                trackBetsieEvent("betsie_start_fresh", { action: "confirm" });
+            document.getElementById("fresh-confirm").addEventListener("click", (event) => {
+                trackCtaClicked("fresh_confirm", event.currentTarget.textContent.trim());
                 const next = new URL(window.location.href);
                 next.search = "mode=create";
                 next.hash = "";
@@ -3766,15 +3855,13 @@
                     closeFreshModal();
                 }
             });
-            document.getElementById("celebration-close").addEventListener("click", () => {
-                trackBetsieEvent("betsie_settle_celebration", { action: "share_results" });
-                trackBetsieEvent("betsie_share_intent", { share_context: "settle_result" });
+            document.getElementById("celebration-close").addEventListener("click", (event) => {
+                trackCtaClicked("celebration_share_results", event.currentTarget.textContent.trim());
                 void shareCurrentLink(settleShareUrlForModal || window.location.href, { share_context: "settle_result" });
                 closeCelebrationModal();
             });
             celebrationModal.addEventListener("click", (event) => {
                 if (event.target === celebrationModal) {
-                    trackBetsieEvent("betsie_settle_celebration", { action: "backdrop_close" });
                     closeCelebrationModal();
                 }
             });
@@ -3784,10 +3871,11 @@
                 }
                 const role = shareHandoffState.role;
                 const handoffUrl = shareHandoffState.url;
+                const primaryBtn = document.getElementById("share-handoff-primary");
+                trackCtaClicked("share_handoff_send", primaryBtn ? primaryBtn.textContent.trim() : "Confirm and send");
                 markHandoffSuppressed(role);
-                trackBetsieEvent("betsie_share_handoff", { action: "primary_share", role });
                 try {
-                    await shareCurrentLink(handoffUrl, { share_context: role === "creator" ? "creator_handoff" : "challenger_handoff" });
+                    await shareCurrentLink(handoffUrl, { kind: "invite" });
                 } catch (_) {
                     // Even if native share is cancelled/fails, continue to the next step.
                 } finally {
@@ -3797,7 +3885,6 @@
                 if (role === "creator") {
                     await updateUrl("active", { inv: "1", cs: "invite", hf: "" });
                 } else if (role === "challenger") {
-                    trackBetsieEvent("betsie_challenger_step", { step: "respond", source: "handoff_copy" });
                     await updateUrl("active", { src: "accept", cr: "1", hf: "" });
                 }
             });
@@ -3810,13 +3897,11 @@
                 markHandoffSuppressed(role);
                 const shareContext = role === "creator" ? "creator_handoff_copy" : "challenger_handoff_copy";
                 const shareText = composeShareText(shareContext);
-                trackBetsieEvent("betsie_share_handoff", { action: "copy_link", role });
+                const copyBtn = document.getElementById("share-handoff-copy");
+                trackCtaClicked("share_handoff_copy", copyBtn ? copyBtn.textContent.trim() : "Copy message");
                 if (navigator.clipboard) {
                     await navigator.clipboard.writeText(`${shareText}\n${handoffUrl}`);
-                    trackBetsieEvent("betsie_share", {
-                        share_method: "clipboard",
-                        share_context: shareContext
-                    });
+                    trackBetsieEvent("betsie_funnel_link_shared", { share_method: "clipboard", kind: "invite" });
                     alert(
                         role === "creator"
                             ? "Invite message copied — paste it into your chat with your friend."
@@ -3839,7 +3924,7 @@
                 const editTrigger = event.target.closest("#share-handoff-edit-link");
                 if (editTrigger) {
                     event.preventDefault();
-                    trackBetsieEvent("betsie_share_handoff", { action: "edit_bet", role: shareHandoffState.role });
+                    trackCtaClicked("share_handoff_edit", "Edit");
                     navigateFromHandoffEdit();
                 }
             });
@@ -3849,7 +3934,8 @@
                     closeVoteConfirmModal();
                     return;
                 }
-                trackBetsieEvent("betsie_modal", { modal_id: "vote_confirm", action: "confirm", choice });
+                const confirmSendBtn = document.getElementById("vote-confirm-primary");
+                trackCtaClicked("vote_confirm_send", confirmSendBtn ? confirmSendBtn.textContent.trim() : "Confirm and send");
                 closeVoteConfirmModal();
                 try {
                     await confirmViewerVoteChoice(choice);
@@ -3859,8 +3945,8 @@
                     renderActive();
                 }
             });
-            document.getElementById("vote-confirm-cancel").addEventListener("click", () => {
-                trackBetsieEvent("betsie_modal", { modal_id: "vote_confirm", action: "cancel" });
+            document.getElementById("vote-confirm-cancel").addEventListener("click", (event) => {
+                trackCtaClicked("vote_confirm_cancel", event.currentTarget.textContent.trim());
                 closeVoteConfirmModal();
             });
             voteConfirmModal.addEventListener("click", (event) => {
@@ -3878,11 +3964,7 @@
                     const locParams = getMergedParamsFromLocation();
                     const currentlyChallengerTrack = (locParams.get("src") || "") === "accept";
                     const nextSrc = currentlyChallengerTrack ? "" : "accept";
-                    trackBetsieEvent("betsie_modal", {
-                        modal_id: "vote_confirm",
-                        action: "switch_role",
-                        next_role: currentlyChallengerTrack ? "creator" : "challenger"
-                    });
+                    trackCtaClicked("vote_confirm_switch_role", switchTrigger.textContent.trim());
                     closeVoteConfirmModal();
                     void updateUrl("active", { src: nextSrc, review: "" });
                     return;
@@ -3890,12 +3972,13 @@
                 const editTrigger = event.target.closest("#vote-confirm-edit-link");
                 if (editTrigger) {
                     event.preventDefault();
-                    trackBetsieEvent("betsie_modal", { modal_id: "vote_confirm", action: "edit_vote" });
+                    trackCtaClicked("vote_confirm_edit", editTrigger.textContent.trim());
                     closeVoteConfirmModal();
                 }
             });
-            document.getElementById("early-end-confirm").addEventListener("click", () => {
-                trackBetsieEvent("betsie_vote", { choice: "call_early_confirm", phase: "countdown" });
+            document.getElementById("early-end-confirm").addEventListener("click", (event) => {
+                trackCtaClicked("early_end_confirm", event.currentTarget.textContent.trim());
+                trackBetsieEvent("betsie_funnel_vote_submitted", { choice: "call_early", phase: "countdown" });
                 closeEarlyEndModal();
                 const locParams = getMergedParamsFromLocation();
                 const challengerTrack = (locParams.get("src") || "") === "accept";
@@ -3905,8 +3988,8 @@
                     eab: challengerTrack ? "2" : "1"
                 });
             });
-            document.getElementById("early-end-cancel").addEventListener("click", () => {
-                trackBetsieEvent("betsie_vote", { choice: "call_early_cancel", phase: "countdown" });
+            document.getElementById("early-end-cancel").addEventListener("click", (event) => {
+                trackCtaClicked("early_end_cancel", event.currentTarget.textContent.trim());
                 closeEarlyEndModal();
             });
             earlyEndModal.addEventListener("click", (event) => {
@@ -3914,14 +3997,14 @@
                     closeEarlyEndModal();
                 }
             });
-            document.getElementById("challenge-accepted-confirm").addEventListener("click", () => {
-                trackBetsieEvent("betsie_modal", { modal_id: "challenge_accepted", action: "confirm_game_on" });
+            document.getElementById("challenge-accepted-confirm").addEventListener("click", (event) => {
+                trackCtaClicked("challenge_accept_game_on", event.currentTarget.textContent.trim());
                 closeChallengeAcceptedModal();
                 // Full navigation + PATCH like other transitions: lands on / with the same bet params as confirm-agree redirect, but Creator track (no src/review).
                 void updateUrl("active", { cs: "gameon", hf: "", src: "", review: "" });
             });
-            document.getElementById("early-call-notify-vote").addEventListener("click", () => {
-                trackBetsieEvent("betsie_modal", { modal_id: "early_call_notify", action: "vote_now" });
+            document.getElementById("early-call-notify-vote").addEventListener("click", (event) => {
+                trackCtaClicked("early_call_vote_now", event.currentTarget.textContent.trim());
                 closeEarlyCallNotifyModal();
                 renderActive();
             });
@@ -3954,9 +4037,6 @@
                     closeEarlyCallNotifyModal();
                     renderActive();
                 }
-                if (event.key === "Escape" && !celebrationModal.classList.contains("is-hidden")) {
-                    trackBetsieEvent("betsie_settle_celebration", { action: "escape_blocked" });
-                }
             });
 
             const hasBetData = Boolean(title && deadline);
@@ -3984,12 +4064,8 @@
                 }
                 return "landing";
             })();
-            trackBetsieEvent("betsie_surface_view", {
-                surface,
-                url_mode: effectiveMode || "",
-                invited_flag: invited || "",
-                challenger_responded: challengerResponded || "",
-                has_winner: winner ? "yes" : "no"
+            trackBetsieEvent("betsie_funnel_step_viewed", {
+                step: funnelStepFromSurface(surface)
             });
             if (!effectiveMode && !hasBetData) {
                 renderCreate();
